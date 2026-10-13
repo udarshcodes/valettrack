@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Environment configurations (Keep examples only)
+.env
+.env.local
+.env.*.local
+!.env.example
+!env.example
+
+# Production builds
+dist/
+client/dist/
+build/
+
+# Python & Machine Learning
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.joblib
+*.pkl
+
+# Large datasets and archives
+*.zip
+*.tar.gz
+*.csv
+!data/birmingham/sample*.csv
+data/birmingham/dataset.csv
+SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv
+
+# Temporary files and editor metadata
+scratch/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.vscode/
+.idea/
+*.tmp

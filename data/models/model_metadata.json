@@ -1,0 +1,41 @@
+{
+  "model_name": "ValetTrack Hourly Occupancy Forecaster",
+  "algorithm": "HistGradientBoostingRegressor",
+  "model_version": "v1.3-gb-timeseries-exact",
+  "scikit_learn_version": "1.9.0",
+  "python_version": "3.12.10",
+  "trained_at": "2026-10-13T09:07:23.862539+00:00",
+  "training_dataset": "City of Birmingham Municipal Parking Sensor Time Series (UCI ML Repository)",
+  "source_rows": 35717,
+  "total_hourly_periods": 1835,
+  "observed_hours": 712,
+  "imputed_missing_hours": 1123,
+  "missing_hours_handling": "Explicit time-based linear interpolation preserving complete hourly grid",
+  "training_samples": 1448,
+  "validation_samples": 363,
+  "features": [
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "lag_1h",
+    "lag_24h"
+  ],
+  "target": "occupancy_pct",
+  "metrics": {
+    "validation_mae": 1.46,
+    "validation_rmse": 2.3,
+    "validation_r2": 0.978,
+    "baseline_persistence_mae": 7.09,
+    "baseline_persistence_rmse": 10.1,
+    "mae_reduction_pct": 79.4
+  },
+  "forecast_horizons": [
+    "1h",
+    "2h",
+    "4h",
+    "8h",
+    "12h",
+    "24h"
+  ],
+  "status": "TRAINED_AND_VERIFIED"
+}

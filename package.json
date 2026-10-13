@@ -1,0 +1,30 @@
+{
+  "name": "valettrack",
+  "version": "1.0.0",
+  "description": "ValetTrack: Dynamic Parking Slot Allocation & Billing with TimescaleDB",
+  "type": "module",
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:init": "powershell -Command \"Get-Content sql/schema.sql -Raw | docker exec -i valettrack-timescaledb psql -U valettrack -d valettrack_db\"",
+    "db:seed": "node scripts/seed.js",
+    "db:reset": "node scripts/dev_reset.js",
+    "ml:train": "python scripts/train_occupancy_model.py",
+    "ml:predict": "python scripts/predict_occupancy.py",
+    "import:birmingham": "node scripts/import_birmingham.js",
+    "import:sfpark": "node scripts/import_sfpark.js",
+    "db:verify": "powershell -Command \"Get-Content sql/verify.sql -Raw | docker exec -i valettrack-timescaledb psql -U valettrack -d valettrack_db\"",
+    "server": "node server/src/index.js",
+    "start": "node server/src/index.js",
+    "client": "npm run dev --prefix client",
+    "test": "node --test tests/backend.test.js",
+    "build": "npm run build --prefix client",
+    "build:client": "npm run build --prefix client",
+    "seed": "node scripts/seed.js"
+  },
+  "dependencies": {
+    "csv-parser": "^3.2.1",
+    "pg": "^8.13.3",
+    "pg-copy-streams": "^7.0.0"
+  }
+}

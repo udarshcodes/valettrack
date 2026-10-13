@@ -1,0 +1,22 @@
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: valettrack-timescaledb
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-valettrack}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-valettrack_secret}
+      POSTGRES_DB: ${DB_NAME:-valettrack_db}
+    volumes:
+      - valettrack_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-valettrack} -d ${DB_NAME:-valettrack_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  valettrack_pgdata:
+    name: valettrack_pgdata
