@@ -75,8 +75,8 @@ flowchart TD
 * **Safe Seeding vs Dev Reset**: `npm run db:seed` performs safe, non-destructive upserts. Intentional cleanup is isolated to `npm run db:reset`, protected by strict safeguards that refuse to execute in production (`NODE_ENV=production`).
 
 ### B. Machine Learning Forecaster and Automated Slot Allocation
-* **Production Time Series Forecaster**: Real `HistGradientBoostingRegressor` trained on 35,717 hourly municipal observations. Features: `hour`, `day_of_week`, `is_weekend`, `lag_1h`, `lag_24h`.
-  * **Validation MAE:** **2.91%** | **RMSE:** **4.44%** | **$R^2$:** **0.9303** (88.1% error reduction over naive 24h persistence baseline).
+* **Production Time Series Forecaster**: Real `HistGradientBoostingRegressor` trained on 35,717 hourly municipal observations with complete continuous hourly indexing and explicit missing hour interpolation. Features: `hour`, `day_of_week`, `is_weekend`, `lag_1h`, `lag_24h`.
+  * **Validation MAE:** **1.46%** | **RMSE:** **2.30%** | **$R^2$:** **0.9780** (79.4% error reduction over naive 24h persistence baseline).
 * **Automated Multi-Criteria Slot Allocation**: Evaluates incoming vehicles by powertrain and dimensions:
   * **Electric Vehicles (EV):** Prioritized for Level 2 `EVCharging` spaces.
   * **SUVs & Large Vehicles:** Prioritized for wide-clearance `Covered` spaces.
@@ -89,7 +89,9 @@ flowchart TD
 * **Integrated Real Datasets**:
   * **City of Birmingham (UCI Machine Learning Repository)**: 35,717 real sensor observations across 30 car parks (Oct to Dec 2016) with negative sensor glitches clamped to 0.
   * **SFpark Street Sensor Dataset (City of San Francisco)**: **7,902,290 real observations** across 10 commercial districts (2011 to 2013). Streamed directly from repository ZIP archive via `COPY ... FROM STDIN`.
-* **Empirical 4-Band Dynamic Pricing Policy**: Implements the documented SFpark pilot dynamic pricing rules (>80% +$0.25, 60–80% maintain, 30–<60% -$0.25, <30% -$0.50, floor $0.25, ceiling $6.00).
+* **Empirical 4-Band Dynamic Pricing Policies**:
+  * **SFpark Municipal Meter Policy ($ USD)**: Documented SFpark pilot dynamic pricing rules (>80% +$0.25, 60–80% maintain, 30–<60% -$0.25, <30% -$0.50, floor $0.25, ceiling $6.00).
+  * **ValetTrack Facility Dynamic Pricing (₹ INR)**: 4-tier elasticity curve for facility bays (>80% +20% surge, 60–80% standard, 30–<60% -10% incentive, <30% -20% discount).
 
 ---
 
@@ -99,10 +101,10 @@ flowchart TD
 |---|---|---|
 | **Database** | TimescaleDB on PostgreSQL | `2.30.2` (PG 16.15) with Docker Compose named volume persistence (`valettrack_pgdata`) |
 | **Backend** | Node.js, Express.js | Express 4.21, `pg` connection pool, `pg-copy-streams`, Zod validation |
-| **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.8, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
+| **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.9.0, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
 | **Frontend** | React 19, Vite 8 | Single page application with React Router 7, Tailwind CSS 3.4 |
 | **Supported Node.js** | Node.js 20.19+, Node.js 22+ LTS | Required by Vite 8 & React 19 (Tested and validated on Node.js 24) |
-| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**14 automated integration test suites**) |
+| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**20 automated integration test suites**) |
 
 ---
 
@@ -115,6 +117,9 @@ flowchart TD
 
 ### Step 1: Install Dependencies
 ```powershell
+# Copy environment configuration template
+Copy-Item .env.example .env
+
 # Root dependencies (pg, pg-copy-streams, csv-parser)
 npm install
 
@@ -124,8 +129,8 @@ npm install --prefix server
 # Client dependencies
 npm install --prefix client
 
-# Python Machine Learning dependencies
-pip install scikit-learn joblib numpy pandas
+# Python Machine Learning dependencies (reproducible manifest)
+pip install -r requirements.txt
 ```
 
 ### Step 2: Start Local TimescaleDB Container
@@ -211,9 +216,9 @@ npm run client
 
 ---
 
-## 5. Automated Test Suite (14 Passing Test Suites)
+## 5. Automated Test Suite (20 Passing Test Suites)
 
-The integration test suite (`tests/backend.test.js`) executes against the running database and validates all system invariants:
+The integration test suite (`tests/backend.test.js`) executes against the live database and validates all system invariants:
 
 1. **Health Check & TimescaleDB Connectivity**: Confirms PostgreSQL 16 + TimescaleDB 2.30 and verifies registered hypertables.
 2. **Dashboard Summary API**: Validates live metrics, slot counts, and capacity calculations.
@@ -228,7 +233,13 @@ The integration test suite (`tests/backend.test.js`) executes against the runnin
 11. **Machine Learning Forecaster & Prediction Endpoints**: Validates model status (`HistGradientBoostingRegressor`, MAE $\le 3.5\%$) and in-database prediction records.
 12. **Automated Slot Allocation Recommendation Service**: Validates EV-to-EVCharging and SUV-to-Covered matching with explainable rationales.
 13. **Identifier Sequence Synchronization**: Validates that inserting records after explicit seed IDs does not cause primary key conflicts.
-14. **Daily and Hourly Occupancy Calculations Accuracy**: Validates mathematically derived daily and hourly occupancy metrics ($0 \le \text{min} \le \text{avg} \le \text{peak} \le 100\%$).
+14. **Daily and Hourly Occupancy Calculations Accuracy & Deterministic Fixtures**: Validates mathematically derived daily and hourly occupancy metrics and deterministic interval fixtures with known expected numerical outputs.
+15. **Multi-Day Ticket Spanning Midnight Interval Splitting**: Validates exact stay duration splitting across midnight into distinct calendar days using the complete facility capacity denominator (`total_slots * 24.0`).
+16. **Missing Hourly Observations & Disjoint Interval Dynamics**: Validates empty-hour handling, true minimum occupancy reaching 0.0% during unoccupied gaps, and true peak occupancy.
+17. **Concurrent Duplicate Vehicle Requests Across Different Slots**: Asserts that two concurrent booking requests for the same vehicle targeting different parking slots reject the duplicate with HTTP 409 Conflict (`VehicleAlreadyParked`).
+18. **Facility Dynamic Pricing Policy Verification**: Validates 4-tier elasticity curve in ₹ INR (+20% surge, 0% standard, -10% incentive, -20% off-peak).
+19. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with an active ticket preserves the `Occupied` status and never resets it to `Available`.
+20. **Machine Learning Model Artifacts, Scikit-Learn Alignment & Live Inference**: Validates model persistence, Scikit-Learn 1.9.0 runtime alignment, multi-horizon forecast generation (+1h, +2h, +4h, etc.), and in-database storage with transaction rollback safety.
 
 Run the test suite at any time:
 ```powershell

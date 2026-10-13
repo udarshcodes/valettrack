@@ -99,25 +99,36 @@ Executed via `node --test tests/backend.test.js`:
 > valettrack@1.0.0 test
 > node --test tests/backend.test.js
 
-Test server running on http://localhost:4805
-✔ 1. Health Check Endpoint & TimescaleDB Connectivity (474.3586ms)
-✔ 2. Dashboard Summary API Returns Database-Backed Statistics (24.9956ms)
-✔ 3. Owner CRUD & Input Validation (48.5802ms)
-✔ 4. Vehicle Registration & Owner Reference Validation (4.7831ms)
-✔ 5. Ticket Lifecycle: Open Ticket, Availability Check, Slot Locking & Billing (87.2611ms)
-✔ 6. Concurrent Slot Allocation Protection (82.1112ms)
-✔ 7. Analytics: Real TimescaleDB Continuous Aggregates & Rate Analysis (5659.3196ms)
-✔ 8. Real world Birmingham and SFpark Hypertable Queries (26783.1458ms)
-✔ 9. Dataset Import Manifest Audit Log Verification (8.9482ms)
+Test server running on http://localhost:6638
+✔ 1. Health Check Endpoint & TimescaleDB Connectivity (387.3366ms)
+✔ 2. Dashboard Summary API Returns Database-Backed Statistics (23.2745ms)
+✔ 3. Owner CRUD & Input Validation (68.5665ms)
+✔ 4. Vehicle Registration & Owner Reference Validation (6.0642ms)
+✔ 5. Ticket Lifecycle: Open Ticket, Availability Check, Slot Locking & Billing (70.3203ms)
+✔ 6. Concurrent Slot Allocation Protection (49.7833ms)
+✔ 7. Analytics: Real TimescaleDB Continuous Aggregates & Rate Analysis (6582.3835ms)
+✔ 8. Real world Birmingham and SFpark Hypertable Queries (256.7097ms)
+✔ 9. Dataset Import Manifest Audit Log Verification (9.2353ms)
+✔ 10. SFpark 4-Band Dynamic Pricing Policy Boundary Tests (28.6202ms)
+✔ 11. Machine Learning Forecaster & Prediction Endpoints (28.1577ms)
+✔ 12. Automated Slot Allocation Recommendation Service (15.4717ms)
+✔ 13. Identifier Sequence Synchronization & Additional Slot Creation (16.0851ms)
+✔ 14. Daily and Hourly Occupancy Calculations Accuracy & Deterministic Interval Fixtures (26.4433ms)
+✔ 15. Multi-Day Ticket Spanning Midnight Interval Splitting & Capacity Denominator (22.5965ms)
+✔ 16. Missing Hourly Observations & Disjoint Interval Handling (0.7796ms)
+✔ 17. Concurrent Duplicate Vehicle Requests Across Different Parking Spaces (54.0646ms)
+✔ 18. Facility Dynamic Pricing Policy Verification (INR, ₹ & 4-Tier Elasticity) (8.0038ms)
+✔ 19. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Status (215.1037ms)
+✔ 20. Machine Learning Model Artifacts, Scikit-Learn Version Alignment & Inference Pipeline (5341.9683ms)
 
-ℹ tests 9
+ℹ tests 20
 ℹ suites 0
-ℹ pass 9
+ℹ pass 20
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 33761.9441
+ℹ duration_ms 13616.5671
 ```
 
 ---
