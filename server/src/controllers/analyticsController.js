@@ -56,7 +56,7 @@ export function calculateIntervalMetrics(hourStart, hourEnd, totalSlots, ticketI
     totalOccupiedMs += (seg.end - seg.start);
   }
   const occupiedSlotHours = totalOccupiedMs / 3600000.0;
-  const avgOccupancy = Number(Math.min(100.0, Math.max(0.0, (occupiedSlotHours / (totalSlots * 1.0)) * 100.0)).toFixed(1));
+  const avgOccupancy = Number(Math.min(100.0, Math.max(0.0, (occupiedSlotHours / (totalSlots * 1.0)) * 100.0)).toFixed(2));
 
   const points = Array.from(eventPointsSet).sort((a, b) => a - b);
   let maxSimultaneous = 0;
@@ -78,8 +78,8 @@ export function calculateIntervalMetrics(hourStart, hourEnd, totalSlots, ticketI
 
   if (minSimultaneous === Infinity) minSimultaneous = 0;
 
-  const peakOccupancy = Number(Math.min(100.0, Math.max(0.0, (maxSimultaneous / totalSlots) * 100.0)).toFixed(1));
-  const minOccupancy = Number(Math.min(100.0, Math.max(0.0, (minSimultaneous / totalSlots) * 100.0)).toFixed(1));
+  const peakOccupancy = Number(Math.min(100.0, Math.max(0.0, (maxSimultaneous / totalSlots) * 100.0)).toFixed(2));
+  const minOccupancy = Number(Math.min(100.0, Math.max(0.0, (minSimultaneous / totalSlots) * 100.0)).toFixed(2));
 
   return {
     avgOccupancy,
@@ -293,86 +293,112 @@ export async function getDailyOccupancy(req, res, next) {
     const hasTickets = await query(`SELECT COUNT(*) as count FROM tickets`);
     const ticketCount = parseInt(hasTickets.rows[0].count, 10);
 
-    if (ticketCount > 0) {
-      let slotTypeFilter = '';
-      const params = [];
-      let paramIdx = 1;
+    // Determine calendar date range
+    let winStart;
+    let winEnd;
 
-      if (slot_type_id) {
-        slotTypeFilter = `AND sc.slot_type_id = $${paramIdx++}`;
-        params.push(parseInt(slot_type_id, 10));
-      }
-
-      let dateFilter = '';
-      if (start_date) {
-        dateFilter += ` AND td.day_bucket >= $${paramIdx++}::timestamptz`;
-        params.push(start_date);
-      }
-      if (end_date) {
-        dateFilter += ` AND td.day_bucket <= $${paramIdx++}::timestamptz`;
-        params.push(end_date);
-      }
-
-      // Corrected daily occupancy calculation:
-      // Computes genuine stay-duration sum across each calendar day, split properly
-      // across midnight and all overlapping days, divided by complete facility capacity (total_slots * 24.0)
-      const result = await query(`
-        WITH slot_caps AS (
-          SELECT 
-            st.slot_type_id,
-            st.type_name,
-            COUNT(ps.slot_id)::int AS total_slots
-          FROM slot_types st
-          LEFT JOIN parking_slots ps ON st.slot_type_id = ps.slot_type_id
-          GROUP BY st.slot_type_id, st.type_name
-        ),
-        ticket_days AS (
-          SELECT 
-            t.ticket_id,
-            ps.slot_type_id,
-            day_series.day_bucket,
-            GREATEST(0.0, EXTRACT(EPOCH FROM (
-              LEAST(COALESCE(t.exit_time, NOW()), day_series.day_bucket + interval '1 day') - 
-              GREATEST(t.entry_time, day_series.day_bucket)
-            )) / 3600.0) AS occupied_hours
-          FROM tickets t
-          JOIN parking_slots ps ON t.slot_id = ps.slot_id
-          CROSS JOIN LATERAL generate_series(
-            date_trunc('day', t.entry_time),
-            date_trunc('day', COALESCE(t.exit_time, NOW())),
-            '1 day'::interval
-          ) AS day_series(day_bucket)
-          WHERE LEAST(COALESCE(t.exit_time, NOW()), day_series.day_bucket + interval '1 day') > GREATEST(t.entry_time, day_series.day_bucket)
-        )
+    if (start_date && end_date) {
+      winStart = new Date(start_date);
+      winEnd = new Date(end_date);
+    } else {
+      const boundsRes = await query(`
         SELECT 
-          td.day_bucket,
-          td.day_bucket AS date,
-          sc.type_name,
-          -- Daily average occupancy % = (occupied_hours / (total_slots * 24.0)) * 100
-          ROUND(
-            LEAST(100.0, GREATEST(0.0, 
-              (COALESCE(SUM(td.occupied_hours), 0.0) / NULLIF(sc.total_slots * 24.0, 0)) * 100.0
-            )), 1
-          ) AS daily_avg,
-          ROUND(
-            LEAST(100.0, GREATEST(0.0, 
-              (COALESCE(SUM(td.occupied_hours), 0.0) / NULLIF(sc.total_slots * 24.0, 0)) * 100.0
-            )), 1
-          ) AS occupancy_percentage,
-          COUNT(DISTINCT td.ticket_id)::int AS total_tickets,
-          ROUND(COALESCE(SUM(td.occupied_hours), 0.0), 1) AS occupied_hours,
-          sc.total_slots
-        FROM ticket_days td
-        JOIN slot_caps sc ON td.slot_type_id = sc.slot_type_id
-        WHERE 1=1 ${slotTypeFilter} ${dateFilter}
-        GROUP BY td.day_bucket, sc.type_name, sc.total_slots
-        ORDER BY td.day_bucket ASC, sc.type_name ASC;
-      `, params);
+          MIN(entry_time) as min_entry,
+          MAX(COALESCE(exit_time, NOW())) as max_exit
+        FROM tickets;
+      `);
+      const minEntry = boundsRes.rows[0].min_entry ? new Date(boundsRes.rows[0].min_entry) : new Date(Date.now() - 30 * 86400000);
+      const maxExit = boundsRes.rows[0].max_exit ? new Date(boundsRes.rows[0].max_exit) : new Date();
 
-      return res.json(result.rows);
+      winStart = start_date ? new Date(start_date) : minEntry;
+      winEnd = end_date ? new Date(end_date) : maxExit;
     }
 
-    res.json([]);
+    let slotTypeCapFilter = '';
+    const params = [winStart.toISOString(), winEnd.toISOString()];
+    let paramIdx = 3;
+
+    if (slot_type_id) {
+      slotTypeCapFilter = `WHERE st.slot_type_id = $${paramIdx++}`;
+      params.push(parseInt(slot_type_id, 10));
+    }
+
+    // Mathematical Daily Occupancy Query:
+    // 1. Generates complete continuous daily calendar series for requested range.
+    // 2. Cross joins with facility slot capacity so every slot type is represented on every calendar day.
+    // 3. Left joins ticket intervals clipped to the day boundaries [day_bucket, day_bucket + 1 day).
+    // 4. Preserves days with 0 tickets (returning 0.0% occupancy).
+    // 5. Complete facility capacity denominator: total_slots * 24.0 hours.
+    const result = await query(`
+      WITH slot_caps AS (
+        SELECT 
+          st.slot_type_id,
+          st.type_name,
+          COUNT(ps.slot_id)::int AS total_slots
+        FROM slot_types st
+        LEFT JOIN parking_slots ps ON st.slot_type_id = ps.slot_type_id
+        ${slotTypeCapFilter}
+        GROUP BY st.slot_type_id, st.type_name
+      ),
+      calendar_days AS (
+        SELECT generate_series(
+          date_trunc('day', $1::timestamptz),
+          date_trunc('day', $2::timestamptz),
+          '1 day'::interval
+        ) AS day_bucket
+      ),
+      day_slot_grid AS (
+        SELECT 
+          cd.day_bucket,
+          sc.slot_type_id,
+          sc.type_name,
+          sc.total_slots
+        FROM calendar_days cd
+        CROSS JOIN slot_caps sc
+      ),
+      ticket_days AS (
+        SELECT 
+          t.ticket_id,
+          ps.slot_type_id,
+          cd.day_bucket,
+          GREATEST(0.0, EXTRACT(EPOCH FROM (
+            LEAST(COALESCE(t.exit_time, NOW()), cd.day_bucket + interval '1 day') - 
+            GREATEST(t.entry_time, cd.day_bucket)
+          )) / 3600.0) AS occupied_hours
+        FROM tickets t
+        JOIN parking_slots ps ON t.slot_id = ps.slot_id
+        JOIN calendar_days cd ON (
+          t.entry_time < cd.day_bucket + interval '1 day' 
+          AND COALESCE(t.exit_time, NOW()) > cd.day_bucket
+        )
+      )
+      SELECT 
+        dsg.day_bucket,
+        dsg.day_bucket AS date,
+        dsg.type_name,
+        -- Daily average occupancy % = (COALESCE(SUM(td.occupied_hours), 0.0) / (total_slots * 24.0)) * 100
+        ROUND(
+          LEAST(100.0, GREATEST(0.0, 
+            (COALESCE(SUM(td.occupied_hours), 0.0) / NULLIF(dsg.total_slots * 24.0, 0)) * 100.0
+          )), 1
+        ) AS daily_avg,
+        ROUND(
+          LEAST(100.0, GREATEST(0.0, 
+            (COALESCE(SUM(td.occupied_hours), 0.0) / NULLIF(dsg.total_slots * 24.0, 0)) * 100.0
+          )), 1
+        ) AS occupancy_percentage,
+        COUNT(DISTINCT td.ticket_id)::int AS total_tickets,
+        ROUND(COALESCE(SUM(td.occupied_hours), 0.0), 1) AS occupied_hours,
+        dsg.total_slots
+      FROM day_slot_grid dsg
+      LEFT JOIN ticket_days td 
+        ON dsg.day_bucket = td.day_bucket 
+        AND dsg.slot_type_id = td.slot_type_id
+      GROUP BY dsg.day_bucket, dsg.type_name, dsg.total_slots
+      ORDER BY dsg.day_bucket ASC, dsg.type_name ASC;
+    `, params);
+
+    return res.json(result.rows);
   } catch (err) {
     next(err);
   }
