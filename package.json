@@ -21,7 +21,8 @@
     "build": "npm run build --prefix client",
     "build:client": "npm run build --prefix client",
     "package": "node scripts/package_release.js",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "seed:demo": "node scripts/seed_demo.js"
   },
   "dependencies": {
     "csv-parser": "^3.2.1",

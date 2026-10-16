@@ -46,19 +46,35 @@ async function importSFpark() {
   const modeLabel = limit ? `DEVELOPMENT SLICE (${limit.toLocaleString()} records)` : 'FULL DATASET (All 7,902,291 records)';
   console.log(`=== Starting SFpark Dataset Import [${modeLabel}] ===`);
 
-  const zipPath = path.resolve(__dirname, '../SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip');
-  const csvPath = path.resolve(__dirname, '../SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv');
+  const zipCandidates = [
+    process.env.SFPARK_ZIP_PATH,
+    path.resolve(__dirname, '../SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip'),
+    path.resolve(__dirname, '../../SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip'),
+    path.resolve(process.env.USERPROFILE || 'C:/Users/Udarsh', 'SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip'),
+    'C:/Users/Udarsh/SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip'
+  ].filter(Boolean);
+
+  const csvCandidates = [
+    process.env.SFPARK_CSV_PATH,
+    path.resolve(__dirname, '../SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv'),
+    path.resolve(__dirname, '../../SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv'),
+    path.resolve(process.env.USERPROFILE || 'C:/Users/Udarsh', 'SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv'),
+    'C:/Users/Udarsh/SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv'
+  ].filter(Boolean);
+
+  const zipPath = zipCandidates.find(p => fs.existsSync(p));
+  const csvPath = csvCandidates.find(p => fs.existsSync(p));
 
   let inputStream;
   let sourceFilename = '';
   let checksum = null;
   let zipProcess = null;
 
-  if (fs.existsSync(zipPath)) {
+  if (zipPath && fs.existsSync(zipPath)) {
     console.log(`• Found ZIP archive: ${zipPath}`);
     checksum = getFileChecksum(zipPath);
     console.log(`  Source SHA256: ${checksum}`);
-    sourceFilename = 'SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip';
+    sourceFilename = path.basename(zipPath);
     zipProcess = spawn('tar', [
       '-xf',
       zipPath,
@@ -66,13 +82,13 @@ async function importSFpark() {
       'SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv'
     ]);
     inputStream = zipProcess.stdout;
-  } else if (fs.existsSync(csvPath)) {
+  } else if (csvPath && fs.existsSync(csvPath)) {
     console.log(`• Found extracted CSV: ${csvPath}`);
     checksum = getFileChecksum(csvPath);
-    sourceFilename = 'SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv';
+    sourceFilename = path.basename(csvPath);
     inputStream = fs.createReadStream(csvPath);
   } else {
-    throw new Error('Neither SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip nor extracted CSV could be found.');
+    throw new Error('Neither SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip nor extracted CSV could be found in project or user profile directory.');
   }
 
   const client = await pool.connect();

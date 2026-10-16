@@ -5,7 +5,7 @@
 [![React](https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg)](https://react.dev/)
 [![ML Forecaster](https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%202.91%25)-purple.svg)]()
 [![Real Observations](https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-24%2F24%20Passed-brightgreen.svg)]()
 
 > **ValetTrack** is an enterprise grade parking management and time series analytics platform. It unifies a high end dark aesthetic landing page with Boyce-Codd Normal Form (BCNF) relational models, **TimescaleDB time series hypertables**, prematerialized continuous aggregates, ACID slot allocation, a production machine learning time series forecaster, automated vehicle-to-space allocation, and real world municipal parking sensor benchmarks from the City of Birmingham (35.7K records) and the complete San Francisco SFpark dataset (**7,902,290 records**).
 
@@ -147,6 +147,9 @@ npm run db:init
 # 2. Safely initialize facility configuration (3 slot types & 24 physical spaces)
 # Note: Safe and idempotent. Preserves existing operational tickets and customer records.
 npm run db:seed
+
+# Optional: Populate realistic demo owners, vehicles, valet staff, and sample tickets
+npm run seed:demo
 ```
 
 *(Note on Development Reset: To perform an intentional, destructive reset during local development, use `npm run db:reset`. This command contains strict safeguards that refuse to execute in production).*
@@ -162,7 +165,7 @@ npm run ml:predict
 
 ### Step 5: Verify Automated Test Suite & Build Frontend
 ```powershell
-# Run complete automated backend test suite (14 test suites covering ACID, ML, pricing, sequences)
+# Run complete automated backend test suite (24 test suites covering ACID, ML, pricing, sequences, packaging)
 npm test
 
 # Build frontend production bundle with Vite

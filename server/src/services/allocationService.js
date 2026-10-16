@@ -151,3 +151,11 @@ export async function recommendParkingSlot({ vehicle_no, vehicle_type, preferred
     }))
   };
 }
+
+export const recommendSlot = (arg) => {
+  if (typeof arg === 'string') {
+    return recommendParkingSlot({ vehicle_no: arg });
+  }
+  return recommendParkingSlot(arg);
+};
+
