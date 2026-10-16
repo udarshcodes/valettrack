@@ -70,11 +70,18 @@ export function calculateSFparkPricingAdjustment(occupancyPct, baseRate = 2.00) 
 
 export function calculateFacilityPricingAdjustment(occupancyPct, slotTypeName, baseRate) {
   if (occupancyPct === null || occupancyPct === undefined || isNaN(Number(occupancyPct))) {
-    throw new Error('Invalid occupancy percentage');
+    throw new Error('Invalid occupancy percentage: must be a valid number.');
   }
 
   const occ = Number(occupancyPct);
+  if (occ < 0 || occ > 100) {
+    throw new Error(`Occupancy percentage out of valid range [0, 100]: received ${occ}`);
+  }
+
   const numericBase = Number(baseRate);
+  if (isNaN(numericBase) || numericBase < 0) {
+    throw new Error(`Base rate must be a non-negative number: received ${baseRate}`);
+  }
 
   let multiplier = 1.0;
   let policyAction = '';
@@ -83,7 +90,7 @@ export function calculateFacilityPricingAdjustment(occupancyPct, slotTypeName, b
     multiplier = 1.20; // +20% surge
     policyAction = 'Facility High Demand (+20% Surge)';
   } else if (occ >= 60.0 && occ <= 80.0) {
-    multiplier = 1.00;
+    multiplier = 1.00; // Standard base
     policyAction = 'Facility Target Capacity (Standard Rate)';
   } else if (occ >= 30.0 && occ < 60.0) {
     multiplier = 0.90; // -10% discount
@@ -93,10 +100,10 @@ export function calculateFacilityPricingAdjustment(occupancyPct, slotTypeName, b
     policyAction = 'Facility Off-Peak (20% Discount)';
   }
 
-  const recommendedRate = Number((numericBase * multiplier).toFixed(2));
+  const recommendedRate = Number(Math.max(0.0, numericBase * multiplier).toFixed(2));
 
   return {
-    slotTypeName,
+    slotTypeName: slotTypeName || 'Standard',
     occupancyPct: occ,
     baselineRate: numericBase,
     multiplier,
@@ -104,6 +111,7 @@ export function calculateFacilityPricingAdjustment(occupancyPct, slotTypeName, b
     recommendedRate,
     policyAction,
     currency: 'INR',
-    currencySymbol: '₹'
+    currencySymbol: '₹',
+    calculatedAt: new Date().toISOString()
   };
 }
