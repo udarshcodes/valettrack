@@ -1,18 +1,30 @@
 {
   "model_name": "ValetTrack Hourly Occupancy Forecaster",
   "algorithm": "HistGradientBoostingRegressor",
-  "model_version": "v1.3-gb-timeseries-exact",
+  "model_version": "v1.4-gb-leakage-free-exact",
   "scikit_learn_version": "1.9.0",
   "python_version": "3.12.10",
-  "trained_at": "2026-10-13T09:07:23.862539+00:00",
+  "trained_at": "2026-10-13T09:40:34.006069+00:00",
   "training_dataset": "City of Birmingham Municipal Parking Sensor Time Series (UCI ML Repository)",
   "source_rows": 35717,
   "total_hourly_periods": 1835,
   "observed_hours": 712,
-  "imputed_missing_hours": 1123,
-  "missing_hours_handling": "Explicit time-based linear interpolation preserving complete hourly grid",
-  "training_samples": 1448,
-  "validation_samples": 363,
+  "missing_unmonitored_hours": 1123,
+  "missing_fraction": 0.612,
+  "split_boundary_timestamp": "2016-12-04 11:00:00",
+  "training_period": {
+    "start": "2016-10-04 07:00:00",
+    "end": "2016-12-04 10:00:00",
+    "total_hours": 1468,
+    "observed_hours_used": 554
+  },
+  "validation_period": {
+    "start": "2016-12-04 11:00:00",
+    "end": "2016-12-19 17:00:00",
+    "total_hours": 367,
+    "genuine_observed_targets": 148,
+    "observed_target_date_range": "2016-12-05 07:00:00 to 2016-12-19 16:00:00"
+  },
   "features": [
     "hour",
     "day_of_week",
@@ -20,14 +32,21 @@
     "lag_1h",
     "lag_24h"
   ],
-  "target": "occupancy_pct",
+  "target": "occupancy_raw",
+  "evaluation_methodology": "Chronological holdout evaluated strictly on genuine observed targets to prevent information leakage",
   "metrics": {
-    "validation_mae": 1.46,
-    "validation_rmse": 2.3,
-    "validation_r2": 0.978,
-    "baseline_persistence_mae": 7.09,
-    "baseline_persistence_rmse": 10.1,
-    "mae_reduction_pct": 79.4
+    "validation_mae": 4.85,
+    "validation_rmse": 9.41,
+    "validation_r2": 0.6896,
+    "baseline_persistence_mae": 6.79,
+    "baseline_persistence_rmse": 10.01,
+    "mae_reduction_pct": 28.6
+  },
+  "secondary_all_hours_metrics": {
+    "all_hours_mae": 10.84,
+    "all_hours_rmse": 15.63,
+    "all_hours_r2": 0.0373,
+    "note": "Includes unmonitored overnight hours interpolated for reference"
   },
   "forecast_horizons": [
     "1h",
