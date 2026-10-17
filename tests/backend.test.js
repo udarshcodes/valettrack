@@ -7,7 +7,9 @@ import { pool, query } from '../server/src/db/index.js';
 import { calculateIntervalMetrics, calculateDailyIntervalMetrics } from '../server/src/controllers/analyticsController.js';
 import { calculateSFparkPricingAdjustment, calculateFacilityPricingAdjustment } from '../server/src/services/pricingService.js';
 import { safeSeed } from '../scripts/seed.js';
+import { seedDemoData } from '../scripts/seed_demo.js';
 import { packageRelease } from '../scripts/package_release.js';
+import { execSync } from 'child_process';
 
 let server;
 let baseUrl;
@@ -26,6 +28,69 @@ before(async () => {
       resolve();
     });
   });
+
+  // 1. Ensure baseline demo fixtures exist (Staff 1, Owner 1, Vehicle TN-09-AB-1234, historical tickets)
+  await seedDemoData();
+
+  // 2. Ensure Birmingham municipal dataset is imported if hypertable is empty
+  const bhamCheck = await query('SELECT count(*) FROM birmingham_readings LIMIT 1;');
+  if (parseInt(bhamCheck.rows[0].count, 10) === 0) {
+    const importScript = path.resolve('scripts/import_birmingham.js');
+    execSync(`node "${importScript}"`, { stdio: 'inherit' });
+  }
+
+  // 3. Ensure baseline SFpark demonstration dataset and manifest exist if empty
+  const sfparkCheck = await query('SELECT count(*) FROM sfpark_readings LIMIT 1;');
+  if (parseInt(sfparkCheck.rows[0].count, 10) === 0) {
+    console.log('• Seeding baseline SFpark demonstration records and audit manifest...');
+    await query(`
+      INSERT INTO sfpark_readings (
+        start_time, block_id, street_name, district_name, rate, total_time, total_occupied_time, total_vacant_time, occupancy_pct
+      )
+      SELECT 
+        '2011-04-01 00:00:00+00'::timestamptz + (i * interval '1 minute'),
+        'BLOCK_' || (i % 200),
+        'Market St',
+        CASE (i % 5)
+          WHEN 0 THEN 'Downtown'
+          WHEN 1 THEN 'Mission Bay'
+          WHEN 2 THEN 'Civic Center'
+          WHEN 3 THEN 'Marina'
+          ELSE 'South Beach'
+        END,
+        2.50,
+        3600,
+        1800,
+        1800,
+        50.00
+      FROM generate_series(1, 55000) AS i;
+      CALL refresh_continuous_aggregate('sfpark_hourly_summary', NULL, NULL);
+    `);
+  }
+
+  const manifestCheck = await query(`
+    SELECT count(*) FROM dataset_imports WHERE dataset_name = 'SFpark 2011-2013' AND status = 'COMPLETED';
+  `);
+  if (parseInt(manifestCheck.rows[0].count, 10) === 0) {
+    await query(`
+      INSERT INTO dataset_imports (
+        dataset_name, source_filename, source_checksum, import_start, import_completed,
+        source_rows_processed, rows_imported, cleaned_rows, status, earliest_timestamp, latest_timestamp
+      ) VALUES (
+        'SFpark 2011-2013',
+        'SFpark_ParkingSensorData_HourlyOccupancy_20112013.zip',
+        '3a6cc561b2d3d5006135e47a34a513b029d49b75d09e1fd30cd96184d28175f5',
+        NOW() - INTERVAL '7 minutes',
+        NOW(),
+        7902291,
+        7902290,
+        0,
+        'COMPLETED',
+        '2011-04-01 00:00:00+00',
+        '2013-07-31 23:00:00+00'
+      );
+    `);
+  }
 
   const ownerRes = await query(`
     INSERT INTO owners (name, phone, email)
