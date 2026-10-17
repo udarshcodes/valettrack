@@ -65,8 +65,26 @@ export async function runPredictionInference(req, res, next) {
       });
     }
 
+    const mode = (req.body?.mode || req.query?.mode || 'historical_replay').toLowerCase();
     const pythonScript = path.resolve(__dirname, '../../../scripts/predict_occupancy.py');
-    const { stdout, stderr } = await execAsync(`python "${pythonScript}"`);
+    const { stdout, stderr } = await execAsync(`python "${pythonScript}" --mode ${mode} --json`);
+
+    let parsedResult = null;
+    try {
+      const jsonStart = stdout.indexOf('{');
+      if (jsonStart !== -1) {
+        parsedResult = JSON.parse(stdout.slice(jsonStart));
+      }
+    } catch (_) {}
+
+    if (parsedResult && parsedResult.status === 'INSUFFICIENT_CURRENT_DATA') {
+      return res.status(200).json({
+        status: 'INSUFFICIENT_CURRENT_DATA',
+        mode: 'operational',
+        message: parsedResult.message,
+        generation_time: parsedResult.generation_time
+      });
+    }
 
     // Fetch the newly inserted predictions
     const latestOccupancy = await query(`
@@ -81,7 +99,7 @@ export async function runPredictionInference(req, res, next) {
       FROM occupancy_predictions op
       JOIN slot_types st ON op.slot_type_id = st.slot_type_id
       ORDER BY op.prediction_time DESC, op.prediction_id DESC
-      LIMIT 12
+      LIMIT 18
     `);
 
     const latestPricing = await query(`
@@ -97,11 +115,13 @@ export async function runPredictionInference(req, res, next) {
       FROM pricing_predictions pp
       JOIN slot_types st ON pp.slot_type_id = st.slot_type_id
       ORDER BY pp.prediction_time DESC, pp.pricing_id DESC
-      LIMIT 12
+      LIMIT 18
     `);
 
     res.status(201).json({
       message: 'Predictions successfully generated and stored in database.',
+      mode,
+      details: parsedResult,
       occupancy_predictions: latestOccupancy.rows,
       pricing_predictions: latestPricing.rows
     });
