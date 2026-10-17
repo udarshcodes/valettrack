@@ -10,7 +10,7 @@
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg" alt="React" /></a>
   <img src="https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%204.85%25)-purple.svg" alt="ML Model" />
   <img src="https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg" alt="Real Data" />
-  <img src="https://img.shields.io/badge/Tests-28%2F28%20Passed-brightgreen.svg" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-30%2F30%20Passed-brightgreen.svg" alt="Tests" />
 </p>
 
 > **ValetTrack** is an enterprise grade parking management and time series analytics platform. It unifies a high end dark aesthetic landing page with Boyce-Codd Normal Form (BCNF) relational models, **TimescaleDB time series hypertables**, prematerialized continuous aggregates, ACID slot allocation, a production machine learning time series forecaster, automated vehicle-to-space allocation, and real world municipal parking sensor benchmarks from the City of Birmingham (35.7K records) and the complete San Francisco SFpark dataset (**7,902,290 records**).
@@ -110,71 +110,152 @@ flowchart TD
 | **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.9.0, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
 | **Frontend** | React 19, Vite 8 | Single page application with React Router 7, Tailwind CSS 3.4 |
 | **Supported Node.js** | Node.js 20.19+, Node.js 22+ LTS | Required by Vite 8 & React 19 (Tested and validated on Node.js 24) |
-| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**28 automated integration test suites**) |
+| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**30 automated integration test suites**) |
 
 ---
 
 ## 3. Quickstart and Local Setup Instructions
 
 ### Prerequisites
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) running locally.
+* [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and **actively running** in the background.
 * [Node.js](https://nodejs.org/) (v20.19+, v22+ LTS, or v24).
 * [Python 3.10+](https://www.python.org/) with `pip`.
 
-### Step 1: Install Dependencies
-```powershell
-# Copy environment configuration template
-Copy-Item .env.example .env
+---
 
+### 🚀 Daily Quick Start (If Already Set Up)
+If you have already installed dependencies and initialized the database, you only need 3 steps to run the app:
+
+```powershell
+# 1. Start TimescaleDB container
+npm run db:up
+
+# 2. Start Backend API Server (Terminal 1)
+npm run server
+
+# 3. Start Frontend Client (Terminal 2)
+npm run client
+```
+* **Frontend App:** [http://localhost:5174](http://localhost:5174)
+* **Backend API:** [http://localhost:5000](http://localhost:5000) (Health check: [http://localhost:5000/api/health](http://localhost:5000/api/health))
+
+---
+
+### 👥 Teammate & Reviewer Guide: Can You Run by Just Forking?
+
+> **Yes, absolutely!** This repository is **100% self-contained**. Any teammate, evaluator, or reviewer can fork or clone this repository and run the full stack (TimescaleDB, backend API, React 19 UI, machine learning pipeline, and all 30 tests) without needing any private databases, proprietary files, or external assets sent separately.
+
+#### Why a Fresh Fork Works Out-of-the-Box:
+1. **Containerized Database**: [compose.yaml](file:///c:/Users/Udarsh/valettrack/compose.yaml) pulls the public `timescale/timescaledb:latest-pg16` image automatically. No local PostgreSQL installation is required.
+2. **Relational Core & Seed**: [sql/schema.sql](file:///c:/Users/Udarsh/valettrack/sql/schema.sql), [sql/seed.sql](file:///c:/Users/Udarsh/valettrack/sql/seed.sql), and [scripts/seed_demo.js](file:///c:/Users/Udarsh/valettrack/scripts/seed_demo.js) initialize the Boyce-Codd Normal Form schema, TimescaleDB hypertables, continuous aggregates, sequences, and realistic demo data with a single command.
+3. **Machine Learning Pipeline**: The municipal training dataset ([data/birmingham/dataset.csv](file:///c:/Users/Udarsh/valettrack/data/birmingham/dataset.csv), 35.7K rows) is tracked in Git. Running `npm run ml:train` builds the `HistGradientBoosting` model and writes `occupancy_forecaster.joblib` locally.
+4. **Media & Assets**: Video streaming on the landing page is hosted via public HTTPS CDN (Mux HLS), and all UI logos/icons are committed in [client/public/](file:///c:/Users/Udarsh/valettrack/client/public/).
+5. **Self-Healing Test Suite**: [tests/backend.test.js](file:///c:/Users/Udarsh/valettrack/tests/backend.test.js) automatically bootstraps baseline demo data, Birmingham data, and continuous aggregate fixtures if tables are empty. All 30 test suites pass out-of-the-box on a fresh clone.
+6. **Continuous Integration Proven**: GitHub Actions CI ([.github/workflows/ci.yml](file:///c:/Users/Udarsh/valettrack/.github/workflows/ci.yml)) tests this exact fresh-clone lifecycle on clean Ubuntu runners on every push.
+
+#### Note on Gitignored Files:
+* `.env`: Kept out of Git for security hygiene. Simply copy [.env.example](file:///c:/Users/Udarsh/valettrack/.env.example) to `.env`.
+* `*.joblib`: Binary model weights are generated on-demand via `npm run ml:train`.
+* `SFpark...zip` (246 MB): Gitignored to keep the repository under GitHub limits. The application and test suite **do not require this file** to run. (The full 7.9M streaming import `npm run import:sfpark` is an optional benchmark).
+
+---
+
+### 🛠️ Complete First-Time Setup (From Scratch)
+
+#### Step 1: Environment Configuration & Dependencies
+Create your local `.env` file from the provided template and install all dependencies:
+
+**PowerShell (Windows):**
+```powershell
+Copy-Item .env.example .env
+```
+**Bash / macOS / Linux:**
+```bash
+cp .env.example .env
+```
+
+Now install root, backend, frontend, and Python ML dependencies:
+```powershell
 # Root dependencies (pg, pg-copy-streams, csv-parser)
 npm install
 
-# Server dependencies
+# Backend server dependencies (Express, Zod, CORS)
 npm install --prefix server
 
-# Client dependencies
+# Frontend client dependencies (React 19, Vite 8, Tailwind CSS)
 npm install --prefix client
 
-# Python Machine Learning dependencies (reproducible manifest)
+# Python Machine Learning dependencies (Scikit-Learn, Pandas, NumPy, Joblib)
 pip install -r requirements.txt
 ```
+> *Tip: For Python, you can optionally create and activate a virtual environment first (`python -m venv venv`, then `.\venv\Scripts\Activate.ps1` on Windows or `source venv/bin/activate` on Linux/macOS).*
 
-### Step 2: Start Local TimescaleDB Container
-```bash
+#### Step 2: Start Local TimescaleDB Container
+Ensure Docker Desktop is open and the engine is running, then start the container:
+```powershell
 npm run db:up
 ```
-Container `valettrack-timescaledb` starts on port `5432` with persistent volume `valettrack_pgdata`.
+*Container `valettrack-timescaledb` starts on port `5432` with persistent volume `valettrack_pgdata`.*
+Check container status anytime using `docker compose ps`.
 
-### Step 3: Apply Database Schema and Safe Facility Seeding
-```bash
-# 1. Apply relational schema, hypertables, triggers, constraints, and sequence sync utility
+#### Step 3: Apply Database Schema & Facility Seeding
+```powershell
+# 1. Apply relational schema, hypertables, continuous aggregates, triggers, and constraints
 npm run db:init
 
 # 2. Safely initialize facility configuration (3 slot types & 24 physical spaces)
-# Note: Safe and idempotent. Preserves existing operational tickets and customer records.
+# Note: Idempotent and safe. Preserves existing operational tickets and customer records.
 npm run db:seed
 
-# Optional: Populate realistic demo owners, vehicles, valet staff, and sample tickets
+# 3. (Optional) Populate realistic demo owners, vehicles, valet staff, and sample tickets
 npm run seed:demo
 ```
+*(Note on Development Reset: To perform an intentional, clean reset during local development, run `npm run db:reset`. This command contains strict safeguards that refuse to execute in production).*
 
-*(Note on Development Reset: To perform an intentional, destructive reset during local development, use `npm run db:reset`. This command contains strict safeguards that refuse to execute in production).*
-
-### Step 4: Train Model and Generate Forecasts
-```bash
-# 1. Train the HistGradientBoosting occupancy model on 35.7K Birmingham observations
+#### Step 4: Train ML Forecaster & Generate Horizon Predictions
+```powershell
+# 1. Train the HistGradientBoosting occupancy model on 35.7K municipal observations
 npm run ml:train
 
 # 2. Generate 24-hour horizon forecasts across facility slot types and persist to PostgreSQL
 npm run ml:predict
 ```
 
-### Step 5: Verify Automated Test Suite & Build Frontend
-```bash
-# 1. Run complete automated backend test suite (28 test suites covering ACID, ML, pricing, sequences, packaging, telemetry, injection guard)
+#### Step 5: (Optional) Ingest Municipal Real-World Sensor Datasets
+To populate continuous aggregates with benchmark sensor observations:
+```powershell
+# Import City of Birmingham sensor dataset (35,717 records)
+npm run import:birmingham
+
+# Import San Francisco SFpark street sensor dataset (7,902,290 records streamed via COPY)
+npm run import:sfpark
+```
+
+#### Step 6: Start Application Servers
+Open **two separate terminal windows** at the root of the project:
+
+**Terminal 1 (Backend API):**
+```powershell
+npm run server
+```
+*Backend runs on `http://localhost:5000` (Health Check: `http://localhost:5000/api/health`).*
+*For hot-reload during development, you can use: `npm run dev --prefix server`.*
+
+**Terminal 2 (Frontend Client):**
+```powershell
+npm run client
+```
+*Frontend runs on `http://localhost:5174` with Vite HMR.*
+
+---
+
+### 🧪 Verification, Testing & Packaging Commands
+
+```powershell
+# 1. Run complete automated backend integration test suite (30/30 suites passing)
 npm test
 
-# 2. Run SQL database constraint, billing, and hypertable verification
+# 2. Run SQL database constraint, billing calculation, and hypertable verification
 npm run db:verify
 
 # 3. Build frontend production bundle with Vite
@@ -184,18 +265,33 @@ npm run build:client
 npm run package
 ```
 
-### Step 6: Start Application Servers
-**Terminal 1 (Backend API):**
-```powershell
-npm run server
-```
-*API runs at `http://localhost:5000` (Health Check: `http://localhost:5000/api/health`)*
+---
 
-**Terminal 2 (Frontend Client):**
-```powershell
-npm run client
-```
-*Frontend runs at `http://localhost:5174`*
+### 🛑 Stopping & Maintenance Commands
+
+| Action | Command | Details |
+|---|---|---|
+| **Stop Database** | `npm run db:down` | Stops the TimescaleDB Docker container safely |
+| **Development Reset** | `npm run db:reset` | Truncates tables, re-applies schema and seeds (dev mode only) |
+| **Check Container Status** | `docker compose ps` | Inspects container health and port bindings |
+
+---
+
+### 🌐 Ports & Services Summary
+
+| Service | Port | Local URL / Host | Default Credentials / Info |
+|---|---|---|---|
+| **Frontend UI** | `5174` | `http://localhost:5174` | Vite + React 19 Client |
+| **Backend REST API** | `5000` | `http://localhost:5000` | Express API (`/api/health`, `/api/tickets`, etc.) |
+| **TimescaleDB / Postgres** | `5432` | `localhost:5432` | `User: valettrack`, `DB: valettrack_db`, `Password: valettrack_secret` |
+
+---
+
+### 💡 Troubleshooting Common Issues
+
+* **Docker engine not running**: If `npm run db:up` fails with `failed to connect to the docker API at npipe://...` or `cannot connect to Docker daemon`, open **Docker Desktop** from your applications menu and wait until the Docker engine status is green / running.
+* **Port 5432 already allocated**: If you have a local PostgreSQL server already using port 5432, you can change `DB_PORT=5433` in `.env` and `compose.yaml` port binding will automatically map it to the container's 5432.
+* **Python packages missing**: If `npm run ml:train` fails with missing modules, ensure you have run `pip install -r requirements.txt` in your active Python environment.
 
 ---
 
