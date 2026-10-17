@@ -588,7 +588,7 @@ test('16. Identifier Sequence Synchronization & Additional Slot Creation', async
 });
 
 test('17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Status', async () => {
-  // Allocate slot 1 with an active ticket
+  // Allocate slot 1 with an active ticket and mark slot 2 as Reserved
   const openRes = await request('/api/tickets', {
     method: 'POST',
     body: JSON.stringify({ vehicle_no: testVehicleNo1, slot_id: 1, staff_id: testStaffId })
@@ -596,23 +596,33 @@ test('17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Sta
   assert.equal(openRes.status, 201);
   const ticketId = openRes.data.ticket.ticket_id;
 
+  // Mark slot 2 as Reserved
+  await query(`UPDATE parking_slots SET status = 'Reserved' WHERE slot_id = 2;`);
+
   try {
     let slot1 = await request('/api/slots/1');
+    let slot2 = await request('/api/slots/2');
     assert.equal(slot1.data.status, 'Occupied');
+    assert.equal(slot2.data.status, 'Reserved');
 
     // Execute safe JavaScript seeding
     await safeSeed();
     slot1 = await request('/api/slots/1');
+    slot2 = await request('/api/slots/2');
     assert.equal(slot1.data.status, 'Occupied', 'JavaScript seed must NOT reset occupied slot to Available');
+    assert.equal(slot2.data.status, 'Reserved', 'JavaScript seed must NOT reset Reserved slot to Available');
 
     // Execute pure SQL seed script (sql/seed.sql)
     const seedSqlPath = path.resolve('sql/seed.sql');
     const seedSql = fs.readFileSync(seedSqlPath, 'utf-8');
     await query(seedSql);
     slot1 = await request('/api/slots/1');
+    slot2 = await request('/api/slots/2');
     assert.equal(slot1.data.status, 'Occupied', 'SQL seed must NOT reset occupied slot to Available');
+    assert.equal(slot2.data.status, 'Reserved', 'SQL seed must NOT reset Reserved slot to Available');
   } finally {
     await request(`/api/tickets/${ticketId}/close`, { method: 'POST' });
+    await query(`UPDATE parking_slots SET status = 'Available' WHERE slot_id = 2;`);
     const slot1After = await request('/api/slots/1');
     assert.equal(slot1After.data.status, 'Available');
   }

@@ -1,15 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Zap, 
-  TrendingUp, 
-  AlertCircle, 
-  Layers, 
   Info, 
-  RefreshCw, 
-  BarChart2,
-  DollarSign,
-  Activity,
-  CheckCircle2
+  RefreshCw,
+  Activity 
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -64,6 +57,15 @@ export function PricingAnalyticsPage() {
     rate: parseFloat(d.avg_meter_rate) || 0,
     occupancy: parseFloat(d.avg_occupancy) || 0
   })) || [];
+
+  if (loading && !analysis) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-400 font-mono text-sm">
+        <RefreshCw className="w-5 h-5 animate-spin mr-2 text-[#10E599]" />
+        Loading pricing & elasticity analytics...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in font-sans">

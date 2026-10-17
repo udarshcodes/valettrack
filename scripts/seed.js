@@ -23,7 +23,7 @@ export async function safeSeed() {
       if (i > 12 && i <= 20) slotTypeId = 2;
       else if (i > 20) slotTypeId = 3;
 
-      // Safe insert: preserve current operational status if slot is already occupied by an active ticket
+      // Safe insert: preserve current operational status (Occupied if active ticket, Reserved if marked Reserved, Available otherwise)
       await client.query(`
         INSERT INTO parking_slots (slot_id, slot_type_id, status)
         VALUES ($1, $2, 'Available')
@@ -31,7 +31,8 @@ export async function safeSeed() {
         SET slot_type_id = EXCLUDED.slot_type_id,
             status = CASE 
               WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied'
-              ELSE parking_slots.status
+              WHEN parking_slots.status = 'Reserved' THEN 'Reserved'
+              ELSE 'Available'
             END;
       `, [i, slotTypeId]);
     }

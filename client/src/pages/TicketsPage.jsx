@@ -1,16 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Receipt, 
   Search, 
   PlusCircle, 
   Clock, 
   CheckCircle2, 
-  AlertCircle, 
-  Car, 
-  User, 
-  Grid, 
-  X,
   RefreshCw
 } from 'lucide-react';
 import { api } from '../services/api';

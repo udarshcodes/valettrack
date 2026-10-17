@@ -19,7 +19,7 @@ async function exportSeedSql() {
     sql += '\n-- 2. Parking Slots\n';
     const ps = await client.query('SELECT * FROM parking_slots ORDER BY slot_id');
     for (const r of ps.rows) {
-      sql += `INSERT INTO parking_slots (slot_id, slot_type_id, status) VALUES (${r.slot_id}, ${r.slot_type_id}, 'Available') ON CONFLICT (slot_id) DO UPDATE SET slot_type_id = EXCLUDED.slot_type_id, status = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied' ELSE parking_slots.status END;\n`;
+      sql += `INSERT INTO parking_slots (slot_id, slot_type_id, status) VALUES (${r.slot_id}, ${r.slot_type_id}, 'Available') ON CONFLICT (slot_id) DO UPDATE SET slot_type_id = EXCLUDED.slot_type_id, status = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied' WHEN parking_slots.status = 'Reserved' THEN 'Reserved' ELSE 'Available' END;\n`;
     }
 
     sql += '\nCOMMIT;\n';

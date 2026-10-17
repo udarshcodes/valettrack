@@ -33,26 +33,20 @@ export function OccupancyAnalyticsPage() {
   const [slotTypeStats, setSlotTypeStats] = useState([]);
   const [mlStatus, setMlStatus] = useState(null);
   const [occPredictions, setOccPredictions] = useState([]);
-  const [pricingPredictions, setPricingPredictions] = useState([]);
-  const [facilityHourly, setFacilityHourly] = useState([]);
   const [generatingForecasts, setGeneratingForecasts] = useState(false);
 
   async function loadData() {
     try {
-      const [bSum, sSum, slotStats, mlStat, occPreds, pricePreds, facHour] = await Promise.all([
+      const [bSum, sSum, slotStats, mlStat, occPreds] = await Promise.all([
         api.getBirminghamSummary(),
         api.getSFparkSummary(),
         api.getSlotTypeOccupancy(),
         api.getPredictionStatus().catch(() => null),
-        api.getOccupancyPredictions().catch(() => []),
-        api.getPricingPredictions().catch(() => []),
-        api.getHourlyOccupancy({ hours: 48 }).catch(() => [])
+        api.getOccupancyPredictions().catch(() => [])
       ]);
 
       setMlStatus(mlStat);
       setOccPredictions(occPreds || []);
-      setPricingPredictions(pricePreds || []);
-      setFacilityHourly(facHour || []);
 
       if (bSum?.carParks) {
         setBhamCarParks(bSum.carParks);

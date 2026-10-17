@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="490" height="112" viewBox="0 0 490 112" fill="none">
+  <g transform="translate(0 0)">
+    <rect x="7" y="7" width="98" height="98" rx="24" fill="#0B1017" stroke="#26352F" stroke-width="1.5"/>
+    <path d="M17 45H27" stroke="#10E599" stroke-width="4" stroke-linecap="round"/>
+    <path d="M20 57H27" stroke="#10E599" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36 84V28H61C76 28 84 36 84 49C84 62 75 70 61 70H47" stroke="#F3F4F6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M51 52L54.4 46.7C55.2 45.4 56.6 44.6 58.1 44.6H67.5C69 44.6 70.3 45.4 71.1 46.7L75 52V57H51V52Z" fill="#10E599"/>
+    <rect x="54.3" y="54.4" width="3.4" height="3.2" rx="1" fill="#0B1017"/>
+    <rect x="68.2" y="54.4" width="3.4" height="3.2" rx="1" fill="#0B1017"/>
+  </g>
+  <text x="127" y="64" fill="#F3F4F6" font-family="Inter, Arial, Helvetica, sans-serif" font-size="38" font-weight="750" letter-spacing="-1.6">Valet<tspan fill="#10E599">Track</tspan></text>
+</svg>

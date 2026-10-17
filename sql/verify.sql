@@ -50,35 +50,55 @@ EXCEPTION WHEN check_violation OR unique_violation THEN
     RAISE NOTICE 'SUCCESS: Negative base rate was correctly rejected.';
 END $$;
 
--- Attempting to double-allocate an already occupied slot (Must fail)
+-- Attempting to double-allocate an already occupied slot (Must fail trigger or partial unique index)
 DO $$
 DECLARE
     v_test_owner INT;
     v_test_staff INT;
+    v_test_slot INT;
+    v_second_insert_succeeded BOOLEAN := FALSE;
 BEGIN
+    -- Create isolated temporary parking slot to guarantee zero interference with operational slots
+    INSERT INTO parking_slots (slot_type_id, status) VALUES (1, 'Available') RETURNING slot_id INTO v_test_slot;
     INSERT INTO owners (name, phone, email) VALUES ('DoubleAllocTest', '9991112223', 'double_alloc@test.internal') RETURNING owner_id INTO v_test_owner;
     INSERT INTO vehicles (vehicle_no, type, color, owner_id) VALUES ('TEST-DBL-1', 'Sedan', 'White', v_test_owner);
     INSERT INTO vehicles (vehicle_no, type, color, owner_id) VALUES ('TEST-DBL-2', 'Sedan', 'Black', v_test_owner);
     INSERT INTO valet_staff (name, phone, shift_timing) VALUES ('StaffTest', '9991119999', 'Morning') RETURNING staff_id INTO v_test_staff;
 
-    -- Open first ticket on Slot 1
-    INSERT INTO tickets (vehicle_no, slot_id, staff_id, entry_time) VALUES ('TEST-DBL-1', 1, v_test_staff, NOW());
-
-    -- Attempt to open second ticket on same Slot 1 (Must fail trigger or unique index)
     BEGIN
-        INSERT INTO tickets (vehicle_no, slot_id, staff_id, entry_time) VALUES ('TEST-DBL-2', 1, v_test_staff, NOW());
-        RAISE EXCEPTION 'FAILED: Double allocation on Slot 1 was accepted!';
+        -- Open first ticket on the isolated test slot
+        INSERT INTO tickets (vehicle_no, slot_id, staff_id, entry_time) VALUES ('TEST-DBL-1', v_test_slot, v_test_staff, NOW());
+
+        -- Attempt to open second ticket on same slot (Must fail trigger or unique index)
+        BEGIN
+            INSERT INTO tickets (vehicle_no, slot_id, staff_id, entry_time) VALUES ('TEST-DBL-2', v_test_slot, v_test_staff, NOW());
+            v_second_insert_succeeded := TRUE;
+        EXCEPTION WHEN unique_violation OR check_violation OR OTHERS THEN
+            RAISE NOTICE 'SUCCESS: Double allocation was correctly rejected (%).', SQLERRM;
+        END;
+
+        IF v_second_insert_succeeded THEN
+            RAISE EXCEPTION 'CRITICAL FAILURE: Double allocation on slot % was unexpectedly accepted!', v_test_slot;
+        END IF;
+
     EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'SUCCESS: Double allocation was correctly rejected (%).', SQLERRM;
+        -- Cleanup on unexpected error
+        DELETE FROM tickets WHERE slot_id = v_test_slot;
+        DELETE FROM parking_slots WHERE slot_id = v_test_slot;
+        DELETE FROM vehicles WHERE vehicle_no IN ('TEST-DBL-1', 'TEST-DBL-2');
+        DELETE FROM owners WHERE owner_id = v_test_owner;
+        DELETE FROM valet_staff WHERE staff_id = v_test_staff;
+        RAISE;
     END;
 
-    -- Cleanup test entries
-    DELETE FROM tickets WHERE vehicle_no IN ('TEST-DBL-1', 'TEST-DBL-2');
-    UPDATE parking_slots SET status = 'Available' WHERE slot_id = 1;
+    -- Normal cleanup
+    DELETE FROM tickets WHERE slot_id = v_test_slot;
+    DELETE FROM parking_slots WHERE slot_id = v_test_slot;
     DELETE FROM vehicles WHERE vehicle_no IN ('TEST-DBL-1', 'TEST-DBL-2');
     DELETE FROM owners WHERE owner_id = v_test_owner;
     DELETE FROM valet_staff WHERE staff_id = v_test_staff;
 END $$;
+
 
 \echo '--- 6. VERIFYING TIMESCALEDB TIME_BUCKET ON REAL DATASETS ---'
 SELECT 

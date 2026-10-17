@@ -51,10 +51,8 @@ export function DashboardLayout() {
     <div className="flex h-screen bg-[#06090D] text-slate-100 overflow-hidden font-sans">
       <aside className="hidden lg:flex flex-col w-64 bg-[#0B1017] border-r border-[#16202C] shrink-0">
         <div className="flex items-center justify-between px-6 py-5 border-b border-[#16202C]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#10E599]/10 border border-[#10E599]/40 flex items-center justify-center text-[#10E599] font-bold text-lg shadow-[0_0_12px_rgba(16,229,153,0.25)]">
-              V
-            </div>
+          <div className="flex items-center gap-3">
+            <img src="/valettrack-mark.png" alt="ValetTrack" className="w-8 h-8 shrink-0 object-contain drop-shadow" />
             <div>
               <span className="font-bold tracking-tight text-white text-base">ValetTrack</span>
               <span className="block text-[10px] text-slate-400 font-mono tracking-wider uppercase">TimescaleDB Core</span>
@@ -134,7 +132,16 @@ export function DashboardLayout() {
         </header>
 
         {mobileMenuOpen && (
-          <div className="lg:hidden fixed inset-0 z-40 bg-black/80 flex flex-col pt-16 px-6 pb-6">
+          <div className="lg:hidden fixed inset-0 z-40 bg-black/90 backdrop-blur-xl flex flex-col pt-6 px-6 pb-6 animate-fade-in">
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <img src="/valettrack-mark.png" alt="ValetTrack" className="w-8 h-8 shrink-0 object-contain drop-shadow" />
+                <span className="font-bold text-white text-base">ValetTrack</span>
+              </div>
+              <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
             <nav className="flex-1 space-y-1 py-4">
               {navItems.map((item) => {
                 const Icon = item.icon;

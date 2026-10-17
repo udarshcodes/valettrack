@@ -137,9 +137,7 @@ export function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-[#070b0a] font-extrabold text-lg tracking-tighter shadow-[0_0_15px_rgba(255,255,255,0.2)]">
-              VT
-            </div>
+            <img src="/valettrack-mark.png" alt="ValetTrack" className="w-10 h-10 shrink-0 object-contain drop-shadow" />
             <div className="flex flex-col">
               <span className="font-extrabold text-xl tracking-tight text-white group-hover:text-[#5ed29c] transition-colors leading-none">
                 ValetTrack
@@ -196,6 +194,11 @@ export function LandingPage() {
           >
             <X className="w-7 h-7" />
           </button>
+
+          <div className="flex items-center gap-3">
+            <img src="/valettrack-mark.png" alt="ValetTrack" className="w-12 h-12 object-contain drop-shadow" />
+            <span className="font-extrabold text-2xl tracking-tight text-white">ValetTrack</span>
+          </div>
           
           <nav className="flex flex-col items-center gap-6 text-lg font-sans tracking-wide">
             {[
@@ -694,9 +697,7 @@ GROUP BY bucket, slot_type_id;`}
       <footer className="relative z-10 border-t border-white/10 bg-[#070b0a]/80 backdrop-blur-md py-12 text-xs text-white/50">
         <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-6 h-6 rounded bg-[#5ed29c]/10 text-[#5ed29c] font-bold flex items-center justify-center text-xs">
-              V
-            </div>
+            <img src="/valettrack-mark.png" alt="ValetTrack" className="w-7 h-7 rounded shrink-0 object-contain drop-shadow" />
             <span className="font-semibold text-white">ValetTrack</span>
             <span>: Relational Database & TimescaleDB System</span>
           </div>

@@ -1,11 +1,17 @@
 # ValetTrack: Intelligent Parking Orchestration and Time Series Analytics
 
-[![TimescaleDB](https://img.shields.io/badge/Database-TimescaleDB%202.30%20(PG16)-blue.svg)](https://www.timescale.com/)
-[![Node.js](https://img.shields.io/badge/Backend-Node.js%20(v20.19%2B%20%7C%20v22%20LTS%20%7C%20v24)-green.svg)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg)](https://react.dev/)
-[![ML Forecaster](https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%202.91%25)-purple.svg)]()
-[![Real Observations](https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg)]()
-[![Tests](https://img.shields.io/badge/Tests-24%2F24%20Passed-brightgreen.svg)]()
+<p align="center">
+  <img src="docs/assets/valettrack-logo.png" alt="ValetTrack Logo" width="280" style="border-radius: 16px;" />
+</p>
+
+<p align="center">
+  <a href="https://www.timescale.com/"><img src="https://img.shields.io/badge/Database-TimescaleDB%202.30%20(PG16)-blue.svg" alt="TimescaleDB" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Backend-Node.js%20(v20.19%2B%20%7C%20v22%20LTS%20%7C%20v24)-green.svg" alt="Node.js" /></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg" alt="React" /></a>
+  <img src="https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%204.85%25)-purple.svg" alt="ML Model" />
+  <img src="https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg" alt="Real Data" />
+  <img src="https://img.shields.io/badge/Tests-24%2F24%20Passed-brightgreen.svg" alt="Tests" />
+</p>
 
 > **ValetTrack** is an enterprise grade parking management and time series analytics platform. It unifies a high end dark aesthetic landing page with Boyce-Codd Normal Form (BCNF) relational models, **TimescaleDB time series hypertables**, prematerialized continuous aggregates, ACID slot allocation, a production machine learning time series forecaster, automated vehicle-to-space allocation, and real world municipal parking sensor benchmarks from the City of Birmingham (35.7K records) and the complete San Francisco SFpark dataset (**7,902,290 records**).
 
@@ -34,7 +40,7 @@ flowchart TD
     subgraph ML ["Machine Learning Pipeline (Python, Scikit-Learn)"]
         Trainer["train_occupancy_model.py (HistGradientBoosting)"]
         Inferencer["predict_occupancy.py (24h Multi-Horizon)"]
-        ModelWeights[("occupancy_forecaster.joblib (MAE 2.91%)")]
+        ModelWeights[("occupancy_forecaster.joblib (MAE 4.85%)")]
     end
 
     subgraph Database ["TimescaleDB 2.30, PostgreSQL 16 (Docker)"]
@@ -165,11 +171,17 @@ npm run ml:predict
 
 ### Step 5: Verify Automated Test Suite & Build Frontend
 ```powershell
-# Run complete automated backend test suite (24 test suites covering ACID, ML, pricing, sequences, packaging)
+# 1. Run complete automated backend test suite (24 test suites covering ACID, ML, pricing, sequences, packaging)
 npm test
 
-# Build frontend production bundle with Vite
+# 2. Run SQL database constraint, billing, and hypertable verification
+npm run db:verify
+
+# 3. Build frontend production bundle with Vite
 npm run build:client
+
+# 4. Generate verified, secret-free release distribution package
+npm run package
 ```
 
 ### Step 6: Start Application Servers
@@ -239,7 +251,7 @@ The integration test suite (`tests/backend.test.js`) executes against the live d
 14. **SFpark 4-Band Dynamic Pricing Boundary Tests**: Validates exact pricing adjustments across 0%, 29.99%, 30%, 59.99%, 60%, 80%, 80.01%, 100%, and the $0.25 minimum rate floor.
 15. **Facility Dynamic Pricing Policy Verification**: Validates 4-tier elasticity curve in ₹ INR (+20% surge, 0% standard, -10% incentive, -20% off-peak) and rejects invalid inputs.
 16. **Identifier Sequence Synchronization & Additional Slot Creation**: Validates that inserting records after explicit seed IDs does not cause primary key conflicts.
-17. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with an active ticket preserves the `Occupied` status and never resets it to `Available`.
+17. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with active tickets and reserved bays preserves both `Occupied` and `Reserved` statuses without resetting them to `Available`.
 18. **Time Series Lag Feature Exact Timestamp Alignment**: Verifies that `lag_1h` is strictly $t - 1\text{h}$ and `lag_24h` is strictly $t - 24\text{h}$.
 19. **Prevention of Future Information Leakage During Model Validation**: Verifies chronological train/test split occurred before preprocessing, and holdout evaluation was conducted exclusively on 148 genuine observed targets.
 20. **Machine Learning Model Artifacts, Scikit-Learn Alignment & Live Inference**: Validates model persistence, Scikit-Learn 1.9.0 runtime alignment, multi-horizon forecast generation (+1h, +2h, +4h, etc.), and in-database storage with transaction rollback safety.

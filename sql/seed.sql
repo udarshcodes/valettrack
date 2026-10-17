@@ -46,7 +46,8 @@ ON CONFLICT (slot_id) DO UPDATE
 SET slot_type_id = EXCLUDED.slot_type_id,
     status = CASE 
       WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied'
-      ELSE parking_slots.status
+      WHEN parking_slots.status = 'Reserved' THEN 'Reserved'
+      ELSE 'Available'
     END;
 
 -- 3. Synchronize All Relational Primary Key Sequences
