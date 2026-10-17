@@ -140,13 +140,13 @@ pip install -r requirements.txt
 ```
 
 ### Step 2: Start Local TimescaleDB Container
-```powershell
+```bash
 npm run db:up
 ```
 Container `valettrack-timescaledb` starts on port `5432` with persistent volume `valettrack_pgdata`.
 
 ### Step 3: Apply Database Schema and Safe Facility Seeding
-```powershell
+```bash
 # 1. Apply relational schema, hypertables, triggers, constraints, and sequence sync utility
 npm run db:init
 
@@ -161,7 +161,7 @@ npm run seed:demo
 *(Note on Development Reset: To perform an intentional, destructive reset during local development, use `npm run db:reset`. This command contains strict safeguards that refuse to execute in production).*
 
 ### Step 4: Train Model and Generate Forecasts
-```powershell
+```bash
 # 1. Train the HistGradientBoosting occupancy model on 35.7K Birmingham observations
 npm run ml:train
 
@@ -170,8 +170,8 @@ npm run ml:predict
 ```
 
 ### Step 5: Verify Automated Test Suite & Build Frontend
-```powershell
-# 1. Run complete automated backend test suite (24 test suites covering ACID, ML, pricing, sequences, packaging)
+```bash
+# 1. Run complete automated backend test suite (28 test suites covering ACID, ML, pricing, sequences, packaging, telemetry, injection guard)
 npm test
 
 # 2. Run SQL database constraint, billing, and hypertable verification
