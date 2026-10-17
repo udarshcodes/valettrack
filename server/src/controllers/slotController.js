@@ -190,3 +190,35 @@ export async function recommendSlot(req, res, next) {
   }
 }
 
+export async function deleteSlot(req, res, next) {
+  try {
+    const { id } = req.params;
+
+    const checkTickets = await query(`
+      SELECT COUNT(*) as count FROM tickets WHERE slot_id = $1
+    `, [id]);
+
+    if (parseInt(checkTickets.rows[0].count, 10) > 0) {
+      return res.status(400).json({
+        error: 'CannotDelete',
+        message: 'Cannot delete parking slot with associated parking tickets in operational history.'
+      });
+    }
+
+    const result = await query(`
+      DELETE FROM parking_slots
+      WHERE slot_id = $1
+      RETURNING slot_id, slot_type_id, status
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'NotFound', message: `Slot ${id} not found` });
+    }
+
+    res.json({ message: 'Parking slot deleted successfully', deleted: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
+

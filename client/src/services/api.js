@@ -42,6 +42,9 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify({ status }),
   }),
+  deleteSlot: (id) => request(`/slots/${id}`, {
+    method: 'DELETE',
+  }),
   getSlotTypes: () => request('/slots/types'),
   updateSlotTypeRate: (id, base_rate) => request(`/slots/types/${id}`, {
     method: 'PUT',
@@ -130,7 +133,20 @@ export const api = {
   },
   getFacilityPricingRecommendations: () => request('/analytics/facility-pricing-recommendations'),
   getPredictionStatus: () => request('/predictions/status'),
-  generatePredictions: () => request('/predictions/generate', { method: 'POST' }),
+  generatePredictions: (mode = 'historical_replay') => request('/predictions/generate', {
+    method: 'POST',
+    body: JSON.stringify({ mode })
+  }),
+  getTelemetryStatus: () => request('/telemetry/status'),
+  getRecentTelemetry: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/telemetry/recent${query ? `?${query}` : ''}`);
+  },
+  ingestTelemetry: (readings, apiKey) => request('/telemetry/readings', {
+    method: 'POST',
+    headers: apiKey ? { 'x-telemetry-key': apiKey } : {},
+    body: JSON.stringify(readings)
+  }),
   getDatasetManifest: () => request('/datasets/manifest'),
   getDatasetsGlobalSummary: () => request('/datasets/summary'),
 };

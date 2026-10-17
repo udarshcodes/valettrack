@@ -10,7 +10,7 @@
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg" alt="React" /></a>
   <img src="https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%204.85%25)-purple.svg" alt="ML Model" />
   <img src="https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg" alt="Real Data" />
-  <img src="https://img.shields.io/badge/Tests-24%2F24%20Passed-brightgreen.svg" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-28%2F28%20Passed-brightgreen.svg" alt="Tests" />
 </p>
 
 > **ValetTrack** is an enterprise grade parking management and time series analytics platform. It unifies a high end dark aesthetic landing page with Boyce-Codd Normal Form (BCNF) relational models, **TimescaleDB time series hypertables**, prematerialized continuous aggregates, ACID slot allocation, a production machine learning time series forecaster, automated vehicle-to-space allocation, and real world municipal parking sensor benchmarks from the City of Birmingham (35.7K records) and the complete San Francisco SFpark dataset (**7,902,290 records**).
@@ -110,7 +110,7 @@ flowchart TD
 | **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.9.0, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
 | **Frontend** | React 19, Vite 8 | Single page application with React Router 7, Tailwind CSS 3.4 |
 | **Supported Node.js** | Node.js 20.19+, Node.js 22+ LTS | Required by Vite 8 & React 19 (Tested and validated on Node.js 24) |
-| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**24 automated integration test suites**) |
+| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**28 automated integration test suites**) |
 
 ---
 
@@ -212,26 +212,33 @@ npm run client
 
 ### Machine Learning & Dynamic Pricing
 * `GET /api/predictions/status`: Returns trained ML model card, validation MAE/RMSE, and active status.
-* `POST /api/predictions/generate`: Triggers model inference to compute fresh 24h forecasts and store in DB.
+* `POST /api/predictions/generate`: Triggers model inference to compute fresh 24h forecasts and store in DB (`mode=historical_replay` or `mode=operational`).
 * `GET /api/predictions/occupancy`: Returns persisted in-database occupancy horizon forecasts.
 * `GET /api/predictions/pricing`: Returns facility dynamic pricing recommendations derived from forecasts.
 * `GET /api/sfpark/pricing-recommendations`: SFpark 4-band dynamic pricing adjustment engine.
 
+### Operational Telemetry Ingestion (Live Sensors)
+* `POST /api/telemetry/readings`: Authenticated ingestion endpoint for genuine facility occupancy observations. Requires `x-telemetry-key` header (configured via `TELEMETRY_API_KEY`). Validates timestamp, slot category, capacity, occupied spaces, and mathematical consistency. Supports single objects or JSON arrays.
+* `GET /api/telemetry/status`: Returns telemetry statistics, 48h reading counts, and operational forecasting readiness (`ready_for_operational_forecast: true/false`).
+* `GET /api/telemetry/recent`: Returns recent ingested facility readings with pagination.
+
 ### Parking Space Allocation & Management
 * `GET /api/slots`: List physical parking spaces with current occupancy status.
 * `POST /api/slots`: Create parking slot with synchronized identifier generation.
+* `GET /api/slots/:id`: View slot details and historical ticket records.
+* `DELETE /api/slots/:id`: Safely delete unreferenced parking slot (protected by referential integrity check returning HTTP 400 `CannotDelete` if historical tickets exist).
 * `GET /api/slots/recommendation`: Recommends optimal space based on vehicle powertrain and dimensions.
 * `POST /api/slots/recommend`: POST endpoint for vehicle-to-slot recommendation matching.
-* `PUT /api/slots/:id/status`: Update slot status (`Available`, `Occupied`, `Reserved`).
+* `PUT /api/slots/:id/status`: Update slot status (`Available`, `Occupied`, `Reserved`). Protected against manual changes while an active ticket is open.
 
 ### Operational Tickets and Billing Lifecycle
 * `GET /api/tickets`: List operational tickets (`status=active` or `status=completed`).
 * `POST /api/tickets`: Atomically allocate slot and open ticket (`{ vehicle_no, slot_id, staff_id }`). Protected by row level locking and partial unique indexes.
-* `POST /api/tickets/:id/close`: Close ticket, calculate stay amount (`CEIL` hours * base rate), stamp exit timestamp, and release slot to Available.
+* `POST /api/tickets/:id/close`: Close ticket, calculate stay amount (`CEIL` hours * base rate), stamp exit timestamp, and release slot to Available. Double closure is rejected with HTTP 400 `AlreadyClosed`.
 
 ---
 
-## 5. Automated Test Suite (24 Passing Test Suites)
+## 5. Automated Test Suite (28 Passing Test Suites)
 
 The integration test suite (`tests/backend.test.js`) executes against the live database and validates all system invariants:
 
@@ -259,6 +266,10 @@ The integration test suite (`tests/backend.test.js`) executes against the live d
 22. **Real World Hypertable Continuous Aggregates**: Executes analytical queries on both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
 23. **Dataset Import Manifest Audit Log & Overwrite Safeguards**: Confirms audit log entries with verified SHA256 checksums, exact row counts, and production overwrite safeguards.
 24. **Secret Protection, Distribution Package Hygiene & Release Packaging**: Verifies `.env` is excluded by git, and release packaging script creates a clean distribution zip excluding all secrets and temporary assets.
+25. **Telemetry API Authentication & Validation Guards**: Validates missing or invalid API keys return HTTP 401 Unauthorized (`InvalidTelemetryKey`), while invalid payloads (future timestamps, capacity overflow, count inconsistency) return HTTP 400 `ValidationError`.
+26. **Telemetry Ingestion, Status Metrics & Operational Forecast Trigger**: Verifies sequential telemetry ingestion, operational readiness status reporting, and triggering operational ML forecasting on live facility data.
+27. **Slot & Valet Staff Referential Integrity Protection**: Verifies creation and deletion of unused slots, while asserting that deleting slots or valet staff with operational ticket records is rejected with HTTP 400 `CannotDelete`.
+28. **Machine Learning Model Artifact Availability Guard**: Verifies that the model status endpoint validates the physical presence of `occupancy_forecaster.joblib` artifact on disk rather than solely inspecting metadata.
 
 Run the test suite at any time:
 ```powershell
@@ -267,8 +278,8 @@ npm test
 
 ---
 
-## 6. Academic Deliverables & Platform Separation
+## 6. Academic Deliverables & Platform Architecture Separation
 
-- **Academic Specification:** Detailed in `docs/assessment_report.md` with Boyce-Codd Normal Form (BCNF) proofs, functional dependency analysis, and EER diagrams.
-- **Oracle PL/SQL Implementation:** Maintained as an academic comparison artifact (`Da2.PDF`). Demonstrates traditional PL/SQL triggers, packages, and sequences.
-- **TimescaleDB / PostgreSQL Application:** The live production enterprise application in this repository. Demonstrates time-series hypertables, continuous aggregates, partial unique indexes, row locking, and scikit-learn machine learning forecasting.
+* **Academic Deliverable 1 (ER/EER & Relational Model)**: Documented in `docs/assessment_report.md` and `ValetTrack_DA_Report.pdf`. Covers entity-relationship modeling in Chen notation, total/partial participation constraints, and BCNF normalization removing transitive dependencies.
+* **Academic Deliverable 2 (Oracle PL/SQL Implementation)**: Documented in `Da2.pdf` and preserved in [`sql/oracle_valettrack.sql`](file:///sql/oracle_valettrack.sql). Features Oracle DDL, sequences, sample data, `fn_calculate_amount`, ticket procedures (`proc_open_ticket`, `proc_close_ticket`), prediction logging procedures, triggers (`trg_ticket_before_insert`, `trg_ticket_after_insert`, `trg_ticket_after_update`), the `pkg_valet_track` package, and an automated demonstration block.
+* **Application Deliverable (PostgreSQL & TimescaleDB System)**: The full-stack production software in this repository. Demonstrates high-performance time-series hypertables (5 hypertables), continuous aggregates (3 views), ACID concurrency controls, authenticated REST API, React 19 frontend with real-time analytics, and scikit-learn machine learning forecaster.

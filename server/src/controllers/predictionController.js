@@ -10,14 +10,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MODEL_DIR = path.resolve(__dirname, '../../../data/models');
 const METADATA_FILE = path.join(MODEL_DIR, 'model_metadata.json');
+const MODEL_FILE = path.join(MODEL_DIR, 'occupancy_forecaster.joblib');
 
 export async function getModelStatus(req, res, next) {
   try {
-    if (!fs.existsSync(METADATA_FILE)) {
+    if (!fs.existsSync(METADATA_FILE) || !fs.existsSync(MODEL_FILE)) {
       return res.json({
         model_available: false,
         status: 'UNAVAILABLE',
-        message: 'No trained machine learning model found in repository. Train using npm run ml:train.'
+        message: 'Trained model artifacts (occupancy_forecaster.joblib and model_metadata.json) not found in repository. Train using npm run ml:train.'
       });
     }
 
@@ -58,10 +59,10 @@ export async function getModelStatus(req, res, next) {
 
 export async function runPredictionInference(req, res, next) {
   try {
-    if (!fs.existsSync(METADATA_FILE)) {
+    if (!fs.existsSync(METADATA_FILE) || !fs.existsSync(MODEL_FILE)) {
       return res.status(400).json({
         error: 'ModelNotTrained',
-        message: 'Cannot run inference: machine learning model has not been trained yet.'
+        message: 'Cannot run inference: machine learning model artifact or metadata has not been trained yet. Run npm run ml:train first.'
       });
     }
 

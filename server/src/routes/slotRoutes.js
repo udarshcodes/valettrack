@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getSlots, getSlotById, updateSlotStatus, getSlotTypes, updateSlotTypeRate, createSlot, recommendSlot } from '../controllers/slotController.js';
+import { getSlots, getSlotById, updateSlotStatus, getSlotTypes, updateSlotTypeRate, createSlot, recommendSlot, deleteSlot } from '../controllers/slotController.js';
 import { validate } from '../middleware/validate.js';
 import { slotStatusSchema, slotTypeRateSchema, idParamSchema } from '../validation/schemas.js';
 
@@ -15,6 +15,7 @@ router.get('/', getSlots);
 router.post('/', createSlot);
 router.get('/:id', validate(idParamSchema, 'params'), getSlotById);
 router.put('/:id/status', validate(idParamSchema, 'params'), validate(slotStatusSchema, 'body'), updateSlotStatus);
+router.delete('/:id', validate(idParamSchema, 'params'), deleteSlot);
 
 export default router;
 

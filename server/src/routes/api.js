@@ -11,6 +11,7 @@ import birminghamRoutes from './birminghamRoutes.js';
 import sfparkRoutes from './sfparkRoutes.js';
 import datasetRoutes from './datasetRoutes.js';
 import predictionRoutes from './predictionRoutes.js';
+import telemetryRoutes from './telemetryRoutes.js';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/birmingham', birminghamRoutes);
 router.use('/sfpark', sfparkRoutes);
 router.use('/datasets', datasetRoutes);
 router.use('/predictions', predictionRoutes);
+router.use('/telemetry', telemetryRoutes);
 
 export default router;

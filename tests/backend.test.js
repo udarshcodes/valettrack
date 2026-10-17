@@ -73,12 +73,13 @@ after(async () => {
 
 async function request(path, options = {}) {
   const url = `${baseUrl}${path}`;
+  const { headers, ...restOptions } = options;
   const res = await fetch(url, {
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers
-    },
-    ...options
+      ...headers
+    }
   });
   const data = await res.json().catch(() => null);
   return { status: res.status, ok: res.ok, data };
@@ -790,4 +791,158 @@ test('24. Secret Protection, Distribution Package Hygiene & Release Packaging', 
   // C. Assert that production with strong password is accepted
   const strongRes = execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; import(\'./server/src/config/env.js\').then(m => { process.stdout.write(m.config.nodeEnv); });"', { encoding: 'utf-8' });
   assert.equal(strongRes.trim(), 'production');
+});
+
+test('25. Telemetry API Authentication & Validation Guards', async () => {
+  // A. Missing authorization header
+  const noKeyRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 10
+    })
+  });
+  assert.equal(noKeyRes.status, 401, 'Request without key must return 401');
+  assert.equal(noKeyRes.data.code, 'InvalidTelemetryKey');
+
+  // B. Invalid authorization header
+  const badKeyRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'wrong_invalid_secret_key' },
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 10
+    })
+  });
+  assert.equal(badKeyRes.status, 401, 'Request with bad key must return 401');
+
+  // C. Valid key with future timestamp
+  const futureDate = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const futureRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+    body: JSON.stringify({
+      reading_time: futureDate,
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 10
+    })
+  });
+  assert.equal(futureRes.status, 400, 'Future timestamp must be rejected with 400');
+  assert.ok(futureRes.data.message.includes('future'));
+
+  // D. Valid key with occupied > total
+  const overflowRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 25
+    })
+  });
+  assert.equal(overflowRes.status, 400, 'occupied_slots > total_slots must return 400');
+
+  // E. Valid key with mathematically inconsistent occupancy_pct
+  const mismatchRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 10,
+      occupancy_pct: 95.0 // Expected 50%
+    })
+  });
+  assert.equal(mismatchRes.status, 400, 'Inconsistent percentage must return 400');
+});
+
+test('26. Telemetry Ingestion, Status Metrics & Operational Forecast Trigger', async () => {
+  // Clear any temporary test telemetry before starting
+  await query(`DELETE FROM occupancy_readings WHERE source = 'test_telemetry_stream';`);
+
+  const now = new Date();
+  const sampleReadings = [];
+  // Build 14 hours of sequential telemetry readings within last 18 hours
+  for (let h = 14; h >= 1; h--) {
+    const readingTime = new Date(now.getTime() - h * 3600 * 1000);
+    const occ = 10 + (h % 5);
+    sampleReadings.push({
+      reading_time: readingTime.toISOString(),
+      slot_type_id: 1,
+      total_slots: 25,
+      occupied_slots: occ,
+      occupancy_pct: Number(((occ / 25) * 100).toFixed(2)),
+      source: 'test_telemetry_stream'
+    });
+  }
+
+  try {
+    // 1. Ingest batch telemetry
+    const ingestRes = await request('/api/telemetry/readings', {
+      method: 'POST',
+      headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+      body: JSON.stringify(sampleReadings)
+    });
+    assert.equal(ingestRes.status, 201);
+    assert.equal(ingestRes.data.count_inserted, 14);
+
+    // 2. Verify status endpoint reports readiness
+    const statusRes = await request('/api/telemetry/status');
+    assert.equal(statusRes.status, 200);
+    assert.ok(statusRes.data.readings_last_48h >= 14);
+    assert.equal(statusRes.data.operational_forecasting_ready, true);
+    assert.equal(statusRes.data.status, 'OPERATIONAL_READY');
+
+    // 3. Trigger operational inference with real ingested telemetry
+    const opGenRes = await request('/api/predictions/generate?mode=operational', { method: 'POST' });
+    assert.equal(opGenRes.status, 201, 'Operational forecasting must succeed with sufficient telemetry');
+    assert.equal(opGenRes.data.mode, 'operational');
+    assert.ok(opGenRes.data.occupancy_predictions.length > 0);
+    assert.ok(opGenRes.data.pricing_predictions.length > 0);
+    assert.ok(opGenRes.data.occupancy_predictions[0].model_version.includes('operational'));
+  } finally {
+    // Clean up test telemetry
+    await query(`DELETE FROM occupancy_readings WHERE source = 'test_telemetry_stream';`);
+  }
+});
+
+test('27. Slot & Valet Staff Referential Integrity Protection', async () => {
+  // 1. Create a temporary slot and verify successful deletion when no tickets reference it
+  const createRes = await request('/api/slots', {
+    method: 'POST',
+    body: JSON.stringify({ slot_type_id: 1, status: 'Available' })
+  });
+  assert.equal(createRes.status, 201);
+  const tempSlotId = createRes.data.slot.slot_id;
+
+  const deleteSlotRes = await request(`/api/slots/${tempSlotId}`, { method: 'DELETE' });
+  assert.equal(deleteSlotRes.status, 200);
+  assert.equal(deleteSlotRes.data.deleted.slot_id, tempSlotId);
+
+  // 2. Attempt to delete slot 1 (which has historical tickets) -> must be rejected with 400
+  const rejectSlotRes = await request('/api/slots/1', { method: 'DELETE' });
+  assert.equal(rejectSlotRes.status, 400);
+  assert.equal(rejectSlotRes.data.error, 'CannotDelete');
+
+  // 3. Attempt to delete staff 1 (which has historical tickets) -> must be rejected with 400
+  const rejectStaffRes = await request('/api/staff/1', { method: 'DELETE' });
+  assert.equal(rejectStaffRes.status, 400);
+  assert.equal(rejectStaffRes.data.error, 'CannotDelete');
+});
+
+test('28. Machine Learning Model Artifact Availability Guard', async () => {
+  const modelJoblibPath = path.resolve('data/models/occupancy_forecaster.joblib');
+  assert.ok(fs.existsSync(modelJoblibPath), 'Model joblib artifact must exist in repository');
+
+  const statusRes = await request('/api/predictions/status');
+  assert.equal(statusRes.status, 200);
+  assert.equal(statusRes.data.model_available, true);
+  assert.equal(statusRes.data.model_status, 'ACTIVE');
 });

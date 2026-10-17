@@ -40,5 +40,6 @@ export const config = {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-  }
+  },
+  telemetryApiKey: process.env.TELEMETRY_API_KEY || 'valettrack_telemetry_dev_key'
 };

@@ -411,6 +411,29 @@ export function SlotsPage() {
                 <p className="text-xs text-slate-500 font-mono">No prior tickets recorded for this slot.</p>
               )}
             </div>
+
+            {slotHistory.length === 0 && selectedSlot.status !== 'Occupied' && (
+              <div className="pt-3 border-t border-[#16202C] flex justify-end">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm(`Are you sure you want to delete Slot #${selectedSlot.slot_id}?`)) {
+                      try {
+                        await api.deleteSlot(selectedSlot.slot_id);
+                        setInspectModalOpen(false);
+                        setActionMessage({ type: 'success', text: `Slot #${selectedSlot.slot_id} was successfully deleted.` });
+                        await loadSlotsData();
+                      } catch (err) {
+                        setActionMessage({ type: 'error', text: err.message || 'Failed to delete slot' });
+                      }
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-mono transition-colors"
+                >
+                  Delete Space #{selectedSlot.slot_id}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>

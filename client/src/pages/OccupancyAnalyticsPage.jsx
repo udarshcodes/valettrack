@@ -14,7 +14,10 @@ import {
   Database as DbIcon,
   RefreshCw as RefreshIcon,
   MapPin as PinIcon,
-  Info
+  Info,
+  Radio,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -34,19 +37,24 @@ export function OccupancyAnalyticsPage() {
   const [mlStatus, setMlStatus] = useState(null);
   const [occPredictions, setOccPredictions] = useState([]);
   const [generatingForecasts, setGeneratingForecasts] = useState(false);
+  const [forecastMode, setForecastMode] = useState('historical_replay');
+  const [telemetryStatus, setTelemetryStatus] = useState(null);
+  const [forecastNotice, setForecastNotice] = useState(null);
 
   async function loadData() {
     try {
-      const [bSum, sSum, slotStats, mlStat, occPreds] = await Promise.all([
+      const [bSum, sSum, slotStats, mlStat, occPreds, telemStat] = await Promise.all([
         api.getBirminghamSummary(),
         api.getSFparkSummary(),
         api.getSlotTypeOccupancy(),
         api.getPredictionStatus().catch(() => null),
-        api.getOccupancyPredictions().catch(() => [])
+        api.getOccupancyPredictions().catch(() => []),
+        api.getTelemetryStatus().catch(() => null)
       ]);
 
       setMlStatus(mlStat);
       setOccPredictions(occPreds || []);
+      setTelemetryStatus(telemStat);
 
       if (bSum?.carParks) {
         setBhamCarParks(bSum.carParks);
@@ -130,13 +138,32 @@ export function OccupancyAnalyticsPage() {
           confidence: d.confidence_level
         }));
 
-  async function handleGenerateForecasts() {
+  async function handleGenerateForecasts(modeToUse = forecastMode) {
     try {
       setGeneratingForecasts(true);
-      await api.generatePredictions();
+      setForecastNotice(null);
+      const res = await api.generatePredictions(modeToUse);
+      if (res && res.status === 'INSUFFICIENT_CURRENT_DATA') {
+        setForecastNotice({
+          type: 'warning',
+          title: 'Operational Telemetry Insufficient',
+          message: res.message
+        });
+      } else {
+        setForecastNotice({
+          type: 'success',
+          title: 'Predictions Generated Successfully',
+          message: `Generated fresh 24h forecast horizons in ${modeToUse === 'operational' ? 'Operational Live' : 'Historical Demonstration Replay'} mode.`
+        });
+      }
       await loadData();
     } catch (err) {
       console.error('Error generating forecasts:', err);
+      setForecastNotice({
+        type: 'error',
+        title: 'Forecast Generation Failed',
+        message: err.message || 'Failed to generate machine learning forecasts.'
+      });
     } finally {
       setGeneratingForecasts(false);
     }
@@ -238,15 +265,84 @@ export function OccupancyAnalyticsPage() {
                 </p>
               </div>
 
-              <button
-                onClick={handleGenerateForecasts}
-                disabled={generatingForecasts}
-                className="px-4 py-2.5 bg-[#10E599] hover:bg-[#0fd28c] text-black font-bold text-xs rounded-xl shadow-lg shadow-[#10E599]/20 transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                <RefreshIcon className={`w-3.5 h-3.5 ${generatingForecasts ? 'animate-spin' : ''}`} />
-                <span>{generatingForecasts ? 'Generating Inference...' : '⚡ Generate Fresh 24h Forecasts'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center bg-[#06090D] p-1 rounded-xl border border-[#16202C] text-xs font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setForecastMode('historical_replay')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors ${
+                      forecastMode === 'historical_replay'
+                        ? 'bg-[#10E599]/20 text-[#10E599] font-bold border border-[#10E599]/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Historical Replay
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForecastMode('operational')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                      forecastMode === 'operational'
+                        ? 'bg-cyan-500/20 text-cyan-400 font-bold border border-cyan-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Radio className="w-3 h-3" />
+                    <span>Operational Live</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => handleGenerateForecasts(forecastMode)}
+                  disabled={generatingForecasts}
+                  className="px-4 py-2 bg-[#10E599] hover:bg-[#0fd28c] text-black font-bold text-xs rounded-xl shadow-lg shadow-[#10E599]/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  <RefreshIcon className={`w-3.5 h-3.5 ${generatingForecasts ? 'animate-spin' : ''}`} />
+                  <span>{generatingForecasts ? 'Running Inference...' : `⚡ Generate ${forecastMode === 'operational' ? 'Live' : 'Replay'} Forecast`}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Operational Telemetry Banner */}
+            <div className="mb-6 p-3.5 rounded-xl bg-[#06090D] border border-[#16202C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-2.5">
+                <span className={`w-2 h-2 rounded-full ${telemetryStatus?.operational_forecasting_ready ? 'bg-[#10E599] animate-pulse' : 'bg-amber-400'}`}></span>
+                <span className="text-slate-300">
+                  Live Facility Telemetry (Last 48h): <strong className="text-white">{telemetryStatus?.readings_last_48h ?? 0} reading(s)</strong>
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="text-slate-400">
+                  Readiness: <strong className={telemetryStatus?.operational_forecasting_ready ? 'text-[#10E599]' : 'text-amber-400'}>
+                    {telemetryStatus?.operational_forecasting_ready ? 'READY FOR LIVE INFERENCE' : 'INSUFFICIENT TELEMETRY (< 12 readings)'}
+                  </strong>
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-500">
+                Active Mode: <strong className="text-slate-300">{forecastMode === 'operational' ? 'Operational Telemetry' : 'Historical Demonstration Replay'}</strong>
+              </span>
+            </div>
+
+            {forecastNotice && (
+              <div className={`mb-6 p-4 rounded-xl border flex items-start gap-3 text-xs font-mono ${
+                forecastNotice.type === 'warning'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                  : forecastNotice.type === 'success'
+                    ? 'bg-[#10E599]/10 border-[#10E599]/30 text-[#10E599]'
+                    : 'bg-red-500/10 border-red-500/30 text-red-300'
+              }`}>
+                {forecastNotice.type === 'warning' ? (
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                ) : forecastNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-[#10E599]" />
+                ) : (
+                  <Info className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+                )}
+                <div>
+                  <strong className="block font-bold">{forecastNotice.title}</strong>
+                  <p className="mt-0.5 text-slate-300">{forecastNotice.message}</p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
               <div className="bg-[#06090D] border border-[#16202C] rounded-xl p-3.5">
