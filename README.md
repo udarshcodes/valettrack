@@ -1,46 +1,133 @@
-# ValetTrack: Intelligent Parking Orchestration and Time Series Analytics
+# ValetTrack
+
+Intelligent parking orchestration, ACID slot allocation, and municipal time series analytics powered by TimescaleDB and Scikit-Learn.
 
 <p align="center">
   <img src="docs/assets/valettrack-logo.png" alt="ValetTrack Logo" width="280" style="border-radius: 16px;" />
 </p>
 
 <p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href=".github/workflows/ci.yml"><img src="https://img.shields.io/badge/Build-30%2F30%20Suites%20Passed-brightgreen.svg" alt="Build Status" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Node.js-v20.19%2B%20%7C%20v22%20LTS%20%7C%20v24-green.svg" alt="Node.js Version" /></a>
   <a href="https://www.timescale.com/"><img src="https://img.shields.io/badge/Database-TimescaleDB%202.30%20(PG16)-blue.svg" alt="TimescaleDB" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Backend-Node.js%20(v20.19%2B%20%7C%20v22%20LTS%20%7C%20v24)-green.svg" alt="Node.js" /></a>
-  <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React%2019%20%2F%20Vite%208-cyan.svg" alt="React" /></a>
-  <img src="https://img.shields.io/badge/ML%20Model-HistGradientBoosting%20(MAE%204.85%25)-purple.svg" alt="ML Model" />
-  <img src="https://img.shields.io/badge/Real%20Data-7.9M%2B%20Observations-emerald.svg" alt="Real Data" />
-  <img src="https://img.shields.io/badge/Tests-30%2F30%20Passed-brightgreen.svg" alt="Tests" />
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite%208-cyan.svg" alt="React 19" /></a>
+  <a href="https://scikit-learn.org/"><img src="https://img.shields.io/badge/ML%20Engine-Scikit--Learn%201.9.0-purple.svg" alt="Scikit-Learn" /></a>
+  <img src="https://img.shields.io/badge/Version-1.0.0-orange.svg" alt="Version 1.0.0" />
 </p>
-
-> **ValetTrack** is an enterprise grade parking management and time series analytics platform. It unifies a high end dark aesthetic landing page with Boyce-Codd Normal Form (BCNF) relational models, **TimescaleDB time series hypertables**, prematerialized continuous aggregates, ACID slot allocation, a production machine learning time series forecaster, automated vehicle-to-space allocation, and real world municipal parking sensor benchmarks from the City of Birmingham (35.7K records) and the complete San Francisco SFpark dataset (**7,902,290 records**).
 
 ---
 
-## 1. System Architecture and Key Capabilities
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Environment Variables](#environment-variables)
+  - [Running the Project](#running-the-project)
+- [Usage](#usage)
+- [API Reference](#api-reference)
+- [Testing and Quality Assurance](#testing-and-quality-assurance)
+- [Deployment](#deployment)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
+
+---
+
+## Overview
+
+**ValetTrack** is an enterprise-grade parking management and time-series analytics platform designed to solve urban parking congestion, bay misallocation, and revenue leakage. It provides parking operators and valet staff with an end-to-end operational hub—from vehicle arrival and automated space recommendation to atomic slot locking and mathematically verified duration billing.
+
+Underneath its dark-mode interface, ValetTrack combines a normalized Boyce-Codd Normal Form (BCNF) relational model in PostgreSQL with **TimescaleDB time-series hypertables** and pre-materialized continuous aggregates. This dual architecture guarantees strict ACID concurrency controls during peak parking rushes while processing millions of sensor observations at sub-100ms query latency.
+
+Built for commercial parking facilities, municipal transit authorities, and urban researchers, ValetTrack incorporates a production-grade machine learning forecasting pipeline (`HistGradientBoostingRegressor`) and real-world municipal sensor benchmarks from the City of Birmingham (35.7K records) and San Francisco's SFpark sensor network (7,902,290 records). It directly bridges day-to-day valet logistics with empirical dynamic pricing and predictive capacity planning.
+
+---
+
+## Key Features
+
+- **Boyce-Codd Normal Form (BCNF) Relational Core**: Schema design eliminates update anomalies and transitive dependencies across owners, vehicles, valet staff, slot types, physical spaces, and tickets.
+- **Race-Condition-Free Slot Allocation**: Transactional row-level locking (`SELECT ... FOR UPDATE`) paired with partial unique indexes (`uq_active_slot_ticket`, `uq_active_vehicle_ticket`) prevents double booking and multiple active tickets for the same vehicle under concurrent load.
+- **Automated Vehicle-to-Slot Recommendation Engine**: Evaluates incoming vehicles by powertrain (`EV`, `Hybrid`, `ICE`), vehicle dimensions, and clearance requirements to optimize space allocation (EVs to `EVCharging`, large vehicles to `Covered`, and sedans to `Regular`).
+- **Mathematical Duration Billing**: Implements deterministic ceiling rounding (`CEIL(duration / 3600) * base_rate`), enforces a mandatory 1-hour minimum charge, and uses database triggers to automatically transition slot status between `Available` and `Occupied`.
+- **High-Performance TimescaleDB Hypertables**: Automated time-partitioning across 5 hypertables (`occupancy_readings`, `occupancy_predictions`, `pricing_predictions`, `birmingham_readings`, and `sfpark_readings`).
+- **Sub-100ms Continuous Aggregates**: Pre-materialized hourly summaries (`hourly_occupancy_summary`, `birmingham_hourly_summary`, and `sfpark_hourly_summary`) provide instant analytical query responses across 7.9M+ records.
+- **Leakage-Free Machine Learning Forecaster**: Scikit-Learn `HistGradientBoostingRegressor` trained on 35,717 municipal sensor observations with causal lag construction (`lag_1h`, `lag_24h`), achieving a validation MAE of 4.85% (a 28.6% error reduction over naive persistence).
+- **Dual Dynamic Pricing Models**: Supports both the municipal San Francisco SFpark 4-band dynamic meter policy (USD) and a facility 4-tier elasticity curve with surge and incentive tiers (INR ₹).
+- **Authenticated Telemetry Ingestion API**: Secure endpoint (`POST /api/telemetry/readings`) protected by constant-time key validation (`crypto.timingSafeEqual`), past-only timestamp bounds, and stream health classifications (`HEALTHY`, `DEGRADED`, `STALE`, `UNAVAILABLE`).
+- **Isolated Oracle 21c PL/SQL Reference Implementation**: Self-contained academic deliverable (`sql/oracle_valettrack.sql`) with Oracle DDL, sequences, billing functions, stored procedures, triggers, and the `pkg_valet_track` package.
+
+
+---
+
+## Tech Stack
+
+| Category | Technology | Version | Purpose in ValetTrack |
+|---|---|---|---|
+| **Database** | TimescaleDB | 2.30.2 | Time-series hypertables, chunk management, and continuous aggregates |
+| **Database Engine** | PostgreSQL | 16.15 | BCNF relational core, partial indexes, triggers, and ACID transactions |
+| **Backend Runtime** | Node.js | 20.19+ / 22+ / 24 | Non-blocking I/O execution environment for REST API services |
+| **Backend Framework** | Express.js | 4.21.2 | Modular REST API routing, error handling, and JSON serialization |
+| **Input Validation** | Zod | 3.24.2 | Strict runtime schema validation for incoming payloads and parameters |
+| **Database Client** | `node-postgres` (`pg`) | 8.13.3 | Connection pooling, transaction control, and parameterized queries |
+| **Data Ingestion** | `pg-copy-streams` | 7.0.0 | High-speed binary streaming (`COPY ... FROM STDIN`) for sensor datasets |
+| **Machine Learning** | Python | 3.10 – 3.12 | Execution environment for ML training and horizon forecasting pipelines |
+| **ML Libraries** | Scikit-Learn | 1.9.0 | `HistGradientBoostingRegressor` model training, metrics, and persistence |
+| **Data Processing** | Pandas & NumPy | >=2.2 / >=2.0 | Time-series chronological indexing, feature engineering, and lag alignment |
+| **Frontend Framework** | React | 19.2.8 | Declarative single-page interface with concurrent rendering support |
+| **Build Tool** | Vite | 8.3.0 | Modern ES module bundler and fast HMR development server |
+| **Client Routing** | React Router | 7.18.4 | Client-side dashboard navigation and nested layout routing |
+| **Styling** | Tailwind CSS | 3.4.17 | Utility-first design system with custom dark aesthetics |
+| **Visualizations** | Recharts | 3.10.1 | Responsive SVG time-series charts, area graphs, and bar metrics |
+| **Icons & Media** | Lucide React & Hls.js | 1.55 / 1.7 | Modern iconography and HTTP Live Streaming (HLS) landing video feed |
+| **Testing** | Node.js Test Runner | Native (`node:test`) | Live database integration test suite (30 automated test suites) |
+| **Linter** | Oxlint | 1.81.0 | High-performance Rust-based JavaScript and React linter |
+| **Containerization** | Docker & Compose | Compose v2 | Multi-container definition and persistent volume orchestration |
+
+---
+
+## Architecture
+
+ValetTrack separates operational transactional workflows from high-throughput analytical time-series pipelines:
+
+1. **Client Layer**: React 19 single-page application communicating over HTTP REST with the backend API.
+2. **Backend Services Layer**: Express.js router, validation middleware (Zod), allocation engine, dynamic pricing engine, and database pool manager.
+3. **Relational Core (PostgreSQL 16)**: Boyce-Codd Normal Form schema storing customers, vehicles, staff, slots, and tickets with row locks (`FOR UPDATE`) for ACID allocation.
+4. **Time-Series Engine (TimescaleDB 2.30)**: Five hypertables partitioned by timestamp, fed by continuous sensor feeds and historical benchmarks, rolled up via pre-materialized continuous aggregates.
+5. **Machine Learning Pipeline**: Standalone Python pipeline using Scikit-Learn to train on municipal sensor observations and generate 24-hour horizon forecasts stored directly into PostgreSQL hypertables.
 
 ```mermaid
 flowchart TD
     subgraph Client ["Frontend Client (React 19, Vite 8, Tailwind CSS)"]
-        Landing["Landing Page (Full Page HLS Video Stream)"]
-        Dashboard["Operational Dashboard (/dashboard)"]
-        AllocUI["Automated Slot Recommender (/tickets)"]
-        PredictUI["Machine Learning Forecaster (/analytics)"]
-        PricingUI["SFpark Dynamic Pricing Policy (/pricing)"]
+        Landing["Landing Page (HLS Video Stream)"]
+        Dashboard["Overview Dashboard (/dashboard)"]
+        AllocUI["Slot Recommender (/dashboard/tickets)"]
+        PredictUI["Occupancy Analytics (/dashboard/occupancy)"]
+        PricingUI["Dynamic Pricing (/dashboard/pricing)"]
+        DatasetsUI["Sensor Datasets (/dashboard/datasets)"]
     end
 
-    subgraph Backend ["Backend API (Node.js, Express 4.21)"]
-        Router["Express REST API and Input Validation"]
-        AllocEngine["Multi-Criteria Vehicle Allocation Engine"]
-        LockManager["ACID Concurrency and Row Lock Manager"]
-        PricingEngine["SFpark 4-Band Dynamic Pricing Engine"]
+    subgraph Backend ["Backend API (Node.js, Express 4.21, Zod)"]
+        Router["Express REST API & Zod Validation"]
+        AllocEngine["Multi-Criteria Vehicle Allocation Service"]
+        LockManager["ACID Concurrency & Row Lock Guard"]
+        PricingEngine["SFpark 4-Band & Facility Pricing Engines"]
+        TelemetryIngest["Telemetry Ingestion & Gap Detection"]
         StreamImporter["Stream Ingestion (pg-copy-streams)"]
     end
 
-    subgraph ML ["Machine Learning Pipeline (Python, Scikit-Learn)"]
+    subgraph ML ["Machine Learning Pipeline (Python, Scikit-Learn 1.9.0)"]
         Trainer["train_occupancy_model.py (HistGradientBoosting)"]
-        Inferencer["predict_occupancy.py (24h Multi-Horizon)"]
+        Inferencer["predict_occupancy.py (24h Recursive Inference)"]
         ModelWeights[("occupancy_forecaster.joblib (MAE 4.85%)")]
+        ModelMeta["model_metadata.json"]
     end
 
     subgraph Database ["TimescaleDB 2.30, PostgreSQL 16 (Docker)"]
@@ -51,350 +138,625 @@ flowchart TD
             SlotTypes["slot_types"]
             Slots["parking_slots"]
             Tickets["tickets (Active Constraints)"]
-            Predictions["occupancy_predictions & pricing_predictions"]
-            Manifest["dataset_imports"]
+            Manifest["dataset_imports (Audit Trail)"]
         end
-        subgraph Hypertables ["Time Series Engine"]
+        subgraph Hypertables ["TimescaleDB Hypertables"]
+            ReadingsHT["occupancy_readings"]
+            PredHT["occupancy_predictions"]
+            PriceHT["pricing_predictions"]
             BhamHT["birmingham_readings (12 Chunks)"]
             SFparkHT["sfpark_readings (122 Chunks)"]
-            CAGG1["birmingham_hourly_summary (Continuous Aggregate)"]
-            CAGG2["sfpark_hourly_summary (Continuous Aggregate)"]
+        end
+        subgraph CAGGs ["Continuous Aggregates"]
+            CAGG1["hourly_occupancy_summary"]
+            CAGG2["birmingham_hourly_summary"]
+            CAGG3["sfpark_hourly_summary"]
         end
     end
 
     Client <-->|REST API / JSON| Backend
-    Backend <-->|pg Pool / SQL| Relational
-    Backend <-->|time_bucket and CAGG| Hypertables
+    Backend <-->|pg Connection Pool / SQL| Relational
+    Backend <-->|time_bucket & CAGG Views| CAGGs
+    Backend -->|Authenticated POST| TelemetryIngest
+    TelemetryIngest -->|Conflict-Aware Upsert| ReadingsHT
     StreamImporter -->|COPY FROM STDIN| Hypertables
-    Trainer --> ModelWeights
-    Inferencer -->|Load Artifacts| ModelWeights
-    Inferencer -->|Persist Predictions| Predictions
-    Backend -->|Spawn Inference| Inferencer
+    Trainer -->|Save Artifacts| ModelWeights
+    Trainer -->|Write Verified Metrics| ModelMeta
+    Inferencer -->|Load Weights| ModelWeights
+    Inferencer -->|Read History & Lags| Database
+    Inferencer -->|Persist Predictions| PredHT
+    Inferencer -->|Persist Dynamic Rates| PriceHT
+    Backend -->|Spawn Inference Subprocess| Inferencer
 ```
 
-### A. Core Relational Operations and Concurrency Safety
-* **Boyce-Codd Normal Form (BCNF)**: Normalized relational schema eliminating update anomalies and transitive dependencies across Owners, Vehicles, Valet Staff, Slot Types, Parking Slots, and Tickets.
-* **Vehicle Concurrency Guard**: Partial unique index `uq_active_vehicle_ticket` on `tickets(vehicle_no) WHERE exit_time IS NULL` prevents any vehicle from holding multiple active parking tickets across the facility simultaneously.
-* **Slot Double Booking Guard**: Partial unique index `uq_active_slot_ticket` on `tickets(slot_id) WHERE exit_time IS NULL` and transactional row locking (`SELECT ... FOR UPDATE`) guarantees race-condition-free slot occupancy under high concurrent load.
-* **Safe Dynamic Sequence Synchronization**: Database routine `fn_sync_all_sequences()` dynamically aligns PostgreSQL `SERIAL` sequences with `MAX(id)` after explicit seed operations.
-* **Deterministic Billing Rules**: Enforces exact mathematical stay duration rounding (`CEIL(duration / 3600) * BaseRate`), a mandatory 1-hour minimum charge, and base rates tied to slot categories.
-* **Safe Seeding vs Dev Reset**: `npm run db:seed` performs safe, non-destructive upserts. Intentional cleanup is isolated to `npm run db:reset`, protected by strict safeguards that refuse to execute in production (`NODE_ENV=production`).
+---
 
-### B. Machine Learning Forecaster and Automated Slot Allocation
-* **Production Time Series Forecaster**: Real `HistGradientBoostingRegressor` trained on 35,717 hourly municipal observations with complete continuous hourly indexing and strict leakage prevention (chronological split before preprocessing). Features: `hour`, `day_of_week`, `is_weekend`, `lag_1h`, `lag_24h`.
-  * **Validation MAE:** **4.85%** | **RMSE:** **9.41%** | **$R^2$:** **0.6896** (evaluated strictly on 148 genuine observed holdout targets, achieving a 28.6% error reduction over the naive 24h persistence baseline of 6.79% MAE).
-* **Automated Multi-Criteria Slot Allocation**: Evaluates incoming vehicles by powertrain and dimensions:
-  * **Electric Vehicles (EV):** Prioritized for Level 2 `EVCharging` spaces.
-  * **SUVs & Large Vehicles:** Prioritized for wide-clearance `Covered` spaces.
-  * **Sedans & Hatchbacks:** Directed to standard `Regular` spaces to conserve premium bays.
-  * Provides explainable allocation rationales via `/api/slots/recommendation` and interactive frontend.
+## Project Structure
 
-### C. TimescaleDB Time Series Engine and Real Municipal Datasets
-* **Hypertables**: Automated time based chunk partitioning on `birmingham_readings` (12 chunks) and `sfpark_readings` (122 chunks).
-* **Continuous Aggregates**: Prematerialized hourly summaries via `birmingham_hourly_summary` and `sfpark_hourly_summary` providing sub-100ms analytical response times across 7.9M+ records.
-* **Integrated Real Datasets**:
-  * **City of Birmingham (UCI Machine Learning Repository)**: 35,717 real sensor observations across 30 car parks (Oct to Dec 2016) with negative sensor glitches clamped to 0.
-  * **SFpark Street Sensor Dataset (City of San Francisco)**: **7,902,290 real observations** across 10 commercial districts (2011 to 2013). Streamed directly from repository ZIP archive via `COPY ... FROM STDIN`.
-* **Empirical 4-Band Dynamic Pricing Policies**:
-  * **SFpark Municipal Meter Policy ($ USD)**: Documented SFpark pilot dynamic pricing rules (>80% +$0.25, 60–80% maintain, 30–<60% -$0.25, <30% -$0.50, floor $0.25, ceiling $6.00).
-  * **ValetTrack Facility Dynamic Pricing (₹ INR)**: 4-tier elasticity curve for facility bays (>80% +20% surge, 60–80% standard, 30–<60% -10% incentive, <30% -20% discount).
+```text
+valettrack/
+├── .env.example                 # Environment configuration template
+├── .gitignore                   # Git exclusion rules (dependencies, secrets, builds, data)
+├── compose.yaml                 # Docker Compose specification for TimescaleDB 2.30 container
+├── LICENSE                      # MIT Open Source License
+├── package.json                 # Root package manifest, orchestration scripts, and dependencies
+├── package-lock.json            # Root dependency lockfile
+├── requirements.txt             # Python machine learning dependencies (scikit-learn 1.9.0)
+├── client/                      # Frontend Single Page Application (React 19 + Vite 8)
+│   ├── .oxlintrc.json           # Oxlint static analysis configuration
+│   ├── index.html               # SPA HTML entry point and web font configurations
+│   ├── package.json             # Frontend dependencies (React Router 7, Recharts, Tailwind)
+│   ├── postcss.config.js        # PostCSS configuration for Tailwind CSS
+│   ├── tailwind.config.js       # Tailwind theme extensions, palettes, and animations
+│   ├── vite.config.js           # Vite build pipeline and proxy configurations
+│   ├── public/                  # Public static assets, brand marks, and favicons
+│   │   ├── favicon.ico          # Fallback browser favicon
+│   │   ├── favicon.png          # High-resolution primary PNG favicon
+│   │   ├── valettrack-logo.png  # Full ValetTrack branding logo
+│   │   └── valettrack-mark.png  # ValetTrack emblem mark used in dashboard navigation
+│   └── src/                     # React source code
+│       ├── App.jsx              # Main router definition and route hierarchy
+│       ├── index.css            # Base Tailwind design system and CSS variable definitions
+│       ├── main.jsx             # React DOM root bootstrapping
+│       ├── components/          # Reusable UI components (Modal, StatusBadge)
+│       ├── layouts/             # Shared layouts (DashboardLayout with navigation sidebar)
+│       ├── pages/               # Application view controllers (Landing, Slots, Tickets, Analytics)
+│       └── services/            # Axios/Fetch API client communicating with backend endpoints
+├── data/                        # Static datasets and model serialization artifacts
+│   ├── birmingham/
+│   │   └── dataset.csv          # UCI Birmingham sensor dataset (35,717 records)
+│   └── models/
+│       ├── model_metadata.json  # Model card, evaluation metrics (MAE 4.85%), and features
+│       └── occupancy_forecaster.joblib # Trained model weights (generated via npm run ml:train)
+├── docs/                        # Project documentation and architectural media
+│   └── assets/                  # Documentation branding logos and visual assets
+├── scripts/                     # Automation, database lifecycle, and machine learning pipelines
+│   ├── dev_reset.js             # Clean development database reset (guarded against production)
+│   ├── import_birmingham.js     # Streaming ingestion for City of Birmingham parking sensors
+│   ├── import_sfpark.js         # Binary COPY streaming importer for SFpark street sensors
+│   ├── package_release.js       # Release packaging script with strict credential hygiene checks
+│   ├── predict_occupancy.py     # Recursive multi-horizon ML inference script
+│   ├── run_sql.js               # SQL runner executing files via Docker container or local psql
+│   ├── seed.js                  # Safe, idempotent facility seed (preserves active tickets)
+│   ├── seed_demo.js             # Realistic demo data seeder (owners, vehicles, staff, tickets)
+│   └── train_occupancy_model.py # HistGradientBoosting ML model training pipeline
+├── server/                      # Backend REST API Application (Node.js + Express)
+│   ├── package.json             # Server dependencies (Express, pg, Zod, dotenv, cors)
+│   └── src/
+│       ├── app.js               # Express application initialization and middleware chain
+│       ├── index.js             # Server entry point and HTTP listener
+│       ├── config/              # Runtime configuration and production environment validation
+│       ├── controllers/         # Request handlers for tickets, slots, analytics, and telemetry
+│       ├── db/                  # PostgreSQL / TimescaleDB connection pool management
+│       ├── middleware/          # Telemetry API key authentication, Zod validation, error handler
+│       ├── routes/              # Modular Express routing definitions
+│       ├── services/            # Vehicle allocation algorithms and dynamic pricing services
+│       └── validation/          # Zod validation schemas for all incoming API payloads
+├── sql/                         # Database DDL, seeding, verification, and academic SQL scripts
+│   ├── analytics.sql            # Benchmark analytical queries utilizing time_bucket and CAGGs
+│   ├── oracle_valettrack.sql    # Isolated Oracle 21c PL/SQL reference implementation
+│   ├── schema.sql               # Primary PostgreSQL & TimescaleDB schema, hypertables, and views
+│   ├── seed.sql                 # Baseline facility configuration SQL seed
+│   └── verify.sql               # Automated SQL verification script testing schema invariants
+└── tests/                       # Automated integration and regression test suite
+    ├── backend.test.js          # 30 automated integration test suites executed with node:test
+    └── mocks/
+        └── mock_predict.py      # Python mock script for testing inference failure edge cases
+```
 
 ---
 
-## 2. Technology Stack & Supported Runtimes
-
-| Layer | Technologies | Details |
-|---|---|---|
-| **Database** | TimescaleDB on PostgreSQL | `2.30.2` (PG 16.15) with Docker Compose named volume persistence (`valettrack_pgdata`) |
-| **Backend** | Node.js, Express.js | Express 4.21, `pg` connection pool, `pg-copy-streams`, Zod validation |
-| **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.9.0, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
-| **Frontend** | React 19, Vite 8 | Single page application with React Router 7, Tailwind CSS 3.4 |
-| **Supported Node.js** | Node.js 20.19+, Node.js 22+ LTS | Required by Vite 8 & React 19 (Tested and validated on Node.js 24) |
-| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**30 automated integration test suites**) |
-
----
-
-## 3. Quickstart and Local Setup Instructions
+## Getting Started
 
 ### Prerequisites
-* [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and **actively running** in the background.
-* [Node.js](https://nodejs.org/) (v20.19+, v22+ LTS, or v24).
-* [Python 3.10+](https://www.python.org/) with `pip`.
+
+Ensure the following tools are installed on your workstation before starting:
+
+- **Docker Desktop** (v24.0+ recommended) with Docker Compose enabled.
+- **Node.js** (v20.19+, v22+ LTS, or v24) and **npm** (v10+).
+- **Python** (v3.10, v3.11, or v3.12) with `pip`.
+- **Git** (v2.30+).
 
 ---
 
-### 🚀 Daily Quick Start (If Already Set Up)
-If you have already installed dependencies and initialized the database, you only need 3 steps to run the app:
+### Installation
 
-```powershell
-# 1. Start TimescaleDB container
-npm run db:up
+Clone the repository and install all project dependencies:
 
-# 2. Start Backend API Server (Terminal 1)
-npm run server
-
-# 3. Start Frontend Client (Terminal 2)
-npm run client
-```
-* **Frontend App:** [http://localhost:5174](http://localhost:5174)
-* **Backend API:** [http://localhost:5000](http://localhost:5000) (Health check: [http://localhost:5000/api/health](http://localhost:5000/api/health))
-
----
-
-### 👥 Teammate & Reviewer Guide: Can You Run by Just Forking?
-
-> **Yes, absolutely!** This repository is **100% self-contained**. Any teammate, evaluator, or reviewer can fork or clone this repository and run the full stack (TimescaleDB, backend API, React 19 UI, machine learning pipeline, and all 30 tests) without needing any private databases, proprietary files, or external assets sent separately.
-
-#### Why a Fresh Fork Works Out-of-the-Box:
-1. **Containerized Database**: [compose.yaml](file:///c:/Users/Udarsh/valettrack/compose.yaml) pulls the public `timescale/timescaledb:latest-pg16` image automatically. No local PostgreSQL installation is required.
-2. **Relational Core & Seed**: [sql/schema.sql](file:///c:/Users/Udarsh/valettrack/sql/schema.sql), [sql/seed.sql](file:///c:/Users/Udarsh/valettrack/sql/seed.sql), and [scripts/seed_demo.js](file:///c:/Users/Udarsh/valettrack/scripts/seed_demo.js) initialize the Boyce-Codd Normal Form schema, TimescaleDB hypertables, continuous aggregates, sequences, and realistic demo data with a single command.
-3. **Machine Learning Pipeline**: The municipal training dataset ([data/birmingham/dataset.csv](file:///c:/Users/Udarsh/valettrack/data/birmingham/dataset.csv), 35.7K rows) is tracked in Git. Running `npm run ml:train` builds the `HistGradientBoosting` model and writes `occupancy_forecaster.joblib` locally.
-4. **Media & Assets**: Video streaming on the landing page is hosted via public HTTPS CDN (Mux HLS), and all UI logos/icons are committed in [client/public/](file:///c:/Users/Udarsh/valettrack/client/public/).
-5. **Self-Healing Test Suite**: [tests/backend.test.js](file:///c:/Users/Udarsh/valettrack/tests/backend.test.js) automatically bootstraps baseline demo data, Birmingham data, and continuous aggregate fixtures if tables are empty. All 30 test suites pass out-of-the-box on a fresh clone.
-6. **Continuous Integration Proven**: GitHub Actions CI ([.github/workflows/ci.yml](file:///c:/Users/Udarsh/valettrack/.github/workflows/ci.yml)) tests this exact fresh-clone lifecycle on clean Ubuntu runners on every push.
-
-#### Note on Gitignored Files:
-* `.env`: Kept out of Git for security hygiene. Simply copy [.env.example](file:///c:/Users/Udarsh/valettrack/.env.example) to `.env`.
-* `*.joblib`: Binary model weights are generated on-demand via `npm run ml:train`.
-* `SFpark...zip` (246 MB): Gitignored to keep the repository under GitHub limits. The application and test suite **do not require this file** to run. (The full 7.9M streaming import `npm run import:sfpark` is an optional benchmark).
-
----
-
-### 🛠️ Complete First-Time Setup (From Scratch)
-
-#### Step 1: Environment Configuration & Dependencies
-Create your local `.env` file from the provided template and install all dependencies:
-
-**PowerShell (Windows):**
-```powershell
-Copy-Item .env.example .env
-```
-**Bash / macOS / Linux:**
 ```bash
-cp .env.example .env
-```
+# 1. Clone the repository
+git clone https://github.com/udarshcodes/valettrack.git
+cd valettrack
 
-Now install root, backend, frontend, and Python ML dependencies:
-```powershell
-# Root dependencies (pg, pg-copy-streams, csv-parser)
+# 2. Configure environment variables
+# On Windows (PowerShell):
+Copy-Item .env.example .env
+# On Linux / macOS:
+cp .env.example .env
+
+# 3. Install root orchestration dependencies
 npm install
 
-# Backend server dependencies (Express, Zod, CORS)
+# 4. Install backend server dependencies
 npm install --prefix server
 
-# Frontend client dependencies (React 19, Vite 8, Tailwind CSS)
+# 5. Install frontend client dependencies
 npm install --prefix client
 
-# Python Machine Learning dependencies (Scikit-Learn, Pandas, NumPy, Joblib)
+# 6. Install Python machine learning dependencies
 pip install -r requirements.txt
 ```
-> *Tip: For Python, you can optionally create and activate a virtual environment first (`python -m venv venv`, then `.\venv\Scripts\Activate.ps1` on Windows or `source venv/bin/activate` on Linux/macOS).*
 
-#### Step 2: Start Local TimescaleDB Container
-Ensure Docker Desktop is open and the engine is running, then start the container:
-```powershell
-npm run db:up
-```
-*Container `valettrack-timescaledb` starts on port `5432` with persistent volume `valettrack_pgdata`.*
-Check container status anytime using `docker compose ps`.
-
-#### Step 3: Apply Database Schema & Facility Seeding
-```powershell
-# 1. Apply relational schema, hypertables, continuous aggregates, triggers, and constraints
-npm run db:init
-
-# 2. Safely initialize facility configuration (3 slot types & 24 physical spaces)
-# Note: Idempotent and safe. Preserves existing operational tickets and customer records.
-npm run db:seed
-
-# 3. (Optional) Populate realistic demo owners, vehicles, valet staff, and sample tickets
-npm run seed:demo
-```
-*(Note on Development Reset: To perform an intentional, clean reset during local development, run `npm run db:reset`. This command contains strict safeguards that refuse to execute in production).*
-
-#### Step 4: Train ML Forecaster & Generate Horizon Predictions
-```powershell
-# 1. Train the HistGradientBoosting occupancy model on 35.7K municipal observations
-npm run ml:train
-
-# 2. Generate 24-hour horizon forecasts across facility slot types and persist to PostgreSQL
-npm run ml:predict
-```
-
-#### Step 5: (Optional) Ingest Municipal Real-World Sensor Datasets
-To populate continuous aggregates with benchmark sensor observations:
-```powershell
-# Import City of Birmingham sensor dataset (35,717 records)
-npm run import:birmingham
-
-# Import San Francisco SFpark street sensor dataset (7,902,290 records streamed via COPY)
-npm run import:sfpark
-```
-
-#### Step 6: Start Application Servers
-Open **two separate terminal windows** at the root of the project:
-
-**Terminal 1 (Backend API):**
-```powershell
-npm run server
-```
-*Backend runs on `http://localhost:5000` (Health Check: `http://localhost:5000/api/health`).*
-*For hot-reload during development, you can use: `npm run dev --prefix server`.*
-
-**Terminal 2 (Frontend Client):**
-```powershell
-npm run client
-```
-*Frontend runs on `http://localhost:5174` with Vite HMR.*
+> **Tip:** You can optionally isolate Python packages in a virtual environment (`python -m venv venv`, followed by `source venv/bin/activate` on Unix or `.\venv\Scripts\Activate.ps1` on Windows).
 
 ---
 
-### 🧪 Verification, Testing & Packaging Commands
+### Environment Variables
 
-```powershell
-# 1. Run complete automated backend integration test suite (30/30 suites passing)
-npm test
+Configure your local environment parameters in `.env`. The project includes pre-configured development defaults in `.env.example`:
 
-# 2. Run SQL database constraint, billing calculation, and hypertable verification
-npm run db:verify
+| Variable | Description | Default / Example Value | Required in Production? |
+|---|---|---|---|
+| `PORT` | HTTP port for the Express API server | `5000` | Optional (defaults to 5000) |
+| `NODE_ENV` | Application environment (`development`, `production`, `test`) | `development` | Yes |
+| `DB_HOST` | Hostname of the TimescaleDB / PostgreSQL instance | `localhost` | Yes |
+| `DB_PORT` | Port exposed by TimescaleDB | `5432` | Yes |
+| `DB_USER` | Database superuser / service account username | `valettrack` | Yes |
+| `DB_PASSWORD` | Database user authentication secret | `valettrack_secret` | **Yes (disallows defaults)** |
+| `DB_NAME` | Target database catalog name | `valettrack_db` | Yes |
+| `CLIENT_ORIGIN` | Allowed CORS origin for the React client | `http://localhost:5174` | Yes |
+| `TELEMETRY_API_KEY` | Secret key for authenticated sensor telemetry ingestion | `valettrack_telemetry_dev_key` | **Yes (min 16 chars, no defaults)** |
 
-# 3. Build frontend production bundle with Vite
+> [!IMPORTANT]
+> When `NODE_ENV=production`, the application refuses to boot if `DB_PASSWORD` or `TELEMETRY_API_KEY` are left as placeholder values, or if `TELEMETRY_API_KEY` is fewer than 16 characters.
+
+---
+
+### Running the Project
+
+#### 1. Development Mode
+
+Execute the following commands in sequence:
+
+```bash
+# Step 1: Start the containerized TimescaleDB instance
+npm run db:up
+
+# Step 2: Initialize database schema, hypertables, continuous aggregates, and triggers
+npm run db:init
+
+# Step 3: Seed facility configuration (3 slot types and 24 parking spaces)
+npm run db:seed
+
+# Step 4: (Optional) Seed realistic demo owners, vehicles, staff, and active tickets
+npm run seed:demo
+
+# Step 5: Train the machine learning model on municipal sensor records
+npm run ml:train
+
+# Step 6: (Optional) Import municipal benchmark datasets
+npm run import:birmingham        # 35.7K records from City of Birmingham
+# npm run import:sfpark          # 7.9M records from SFpark (requires SFpark ZIP)
+```
+
+Now launch the application servers in two separate terminal windows:
+
+```bash
+# Terminal 1: Start Backend API (runs on http://localhost:5000)
+npm run server
+
+# Terminal 2: Start Frontend Client (runs on http://localhost:5174)
+npm run client
+```
+
+- **Frontend Application**: [http://localhost:5174](http://localhost:5174)
+- **Backend API Server**: [http://localhost:5000](http://localhost:5000)
+- **API Health Check**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
+
+---
+
+#### 2. Production Mode
+
+```bash
+# Step 1: Build the optimized static frontend bundle
 npm run build:client
 
-# 4. Generate verified, secret-free release distribution package
+# Step 2: Preview the production bundle locally (or serve client/dist via Nginx/Caddy)
+npm run preview --prefix client
+
+# Step 3: Run the backend server in production mode
+NODE_ENV=production npm run server
+```
+
+---
+
+## Usage
+
+### 1. Ingesting Real-Time Sensor Telemetry
+
+Send facility sensor observations to the authenticated telemetry endpoint:
+
+```bash
+curl -X POST http://localhost:5000/api/telemetry/readings \
+  -H "Content-Type: application/json" \
+  -H "x-telemetry-key: valettrack_telemetry_dev_key" \
+  -d '{
+    "reading_time": "2026-10-17T15:00:00Z",
+    "slot_type_id": 1,
+    "total_slots": 12,
+    "occupied_slots": 8,
+    "source": "valet_gate_sensor"
+  }'
+```
+
+**Response (HTTP 201 Created):**
+```json
+{
+  "message": "Telemetry readings successfully ingested.",
+  "ingested_count": 1,
+  "duplicates_updated": 0,
+  "slot_type_id": 1
+}
+```
+
+---
+
+### 2. Requesting Vehicle-to-Slot Recommendations
+
+Obtain an optimal bay recommendation based on vehicle dimensions and powertrain:
+
+```bash
+curl -X POST http://localhost:5000/api/slots/recommend \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vehicle_no": "KA-01-EV-2026",
+    "type": "Sedan",
+    "powertrain": "EV"
+  }'
+```
+
+**Response (HTTP 200 OK):**
+```json
+{
+  "recommended_slot": {
+    "slot_id": 21,
+    "slot_type_id": 3,
+    "type_name": "EVCharging",
+    "base_rate": 120.00,
+    "status": "Available"
+  },
+  "rationale": "Prioritized Level 2 EVCharging bay (Slot 21) based on vehicle electric powertrain specifications.",
+  "match_score": 95
+}
+```
+
+---
+
+### 3. Atomically Opening a Parking Ticket
+
+Allocate a bay and open an active ticket with ACID concurrency protection:
+
+```bash
+curl -X POST http://localhost:5000/api/tickets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vehicle_no": "KA-01-EV-2026",
+    "slot_id": 21,
+    "staff_id": 1
+  }'
+```
+
+**Response (HTTP 201 Created):**
+```json
+{
+  "ticket_id": 72,
+  "vehicle_no": "KA-01-EV-2026",
+  "slot_id": 21,
+  "staff_id": 1,
+  "entry_time": "2026-10-17T15:05:00.000Z",
+  "exit_time": null,
+  "amount_paid": 0.00,
+  "status": "active"
+}
+```
+
+---
+
+### 4. Closing a Ticket and Calculating Duration Billing
+
+Close the ticket, release the slot, and compute the billable charge:
+
+```bash
+curl -X POST http://localhost:5000/api/tickets/72/close
+```
+
+**Response (HTTP 200 OK):**
+```json
+{
+  "ticket_id": 72,
+  "vehicle_no": "KA-01-EV-2026",
+  "slot_id": 21,
+  "entry_time": "2026-10-17T15:05:00.000Z",
+  "exit_time": "2026-10-17T16:20:00.000Z",
+  "billable_hours": 2,
+  "base_rate": 120.00,
+  "amount_paid": 240.00,
+  "slot_status": "Available"
+}
+```
+
+---
+
+### 5. Generating 24-Hour Horizon ML Occupancy Forecasts
+
+Trigger recursive autoregressive forecasting and persist results to the database:
+
+```bash
+curl -X POST "http://localhost:5000/api/predictions/generate?mode=historical_replay"
+```
+
+**Response (HTTP 201 Created):**
+```json
+{
+  "status": "SUCCESS",
+  "mode": "historical_replay",
+  "predictions_count": 18,
+  "generation_time": "2026-10-17T15:10:00.000Z",
+  "model_version": "v1.4-gb-leakage-free-exact",
+  "forecast_horizons": ["1h", "2h", "4h", "8h", "12h", "24h"]
+}
+```
+
+---
+
+## API Reference
+
+The backend exposes a structured, modular REST API under `/api`:
+
+### System Health & Status
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/health` | Inspects TimescaleDB version, connected hypertables, and continuous aggregate views | None |
+
+### Dashboard & Analytics
+
+| Method | Endpoint | Parameters / Query | Description |
+|---|---|---|---|
+| `GET` | `/api/dashboard/summary` | None | Live capacity counts, slot distribution, active tickets, and revenue |
+| `GET` | `/api/analytics/daily` | `slot_type_id`, `start_date`, `end_date` | Continuous multi-day occupancy mathematically derived from tickets |
+| `GET` | `/api/analytics/hourly` | `hours`, `slot_type_id` | Hourly time-weighted average, true peak, and minimum occupancy |
+| `GET` | `/api/analytics/continuous-aggregate` | `limit` | Prematerialized continuous aggregate rollups from TimescaleDB |
+| `GET` | `/api/analytics/facility-pricing-recommendations` | None | Facility dynamic rate suggestions across slot categories |
+
+### Parking Space Allocation & Management
+
+| Method | Endpoint | Payload / Query | Description |
+|---|---|---|---|
+| `GET` | `/api/slots` | None | List all physical spaces with status and category metadata |
+| `POST` | `/api/slots` | `{ slot_type_id, status }` | Create a new parking space with synchronized sequence IDs |
+| `GET` | `/api/slots/:id` | None | Retrieve slot details and historical ticket activity |
+| `DELETE` | `/api/slots/:id` | None | Safely delete slot (rejected if historical tickets exist) |
+| `POST` | `/api/slots/recommend` | `{ vehicle_no, type, powertrain }` | Recommend optimal space based on vehicle specifications |
+| `PUT` | `/api/slots/:id/status` | `{ status }` | Update bay status (rejected if an active ticket is open) |
+
+### Operational Tickets & Billing
+
+| Method | Endpoint | Payload / Query | Description |
+|---|---|---|---|
+| `GET` | `/api/tickets` | `status` (`active`\|`completed`\|`all`), `limit`, `offset` | List operational parking tickets with vehicle and slot joins |
+| `POST` | `/api/tickets` | `{ vehicle_no, slot_id, staff_id }` | Atomically lock slot and issue ticket (ACID concurrency guard) |
+| `GET` | `/api/tickets/:id` | None | Retrieve ticket details, duration, and calculated charges |
+| `POST` | `/api/tickets/:id/close`| None | Close ticket, compute stay duration, apply billing, and release bay |
+
+### Customers, Vehicles & Valet Staff
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` / `POST` | `/api/owners` | List registered vehicle owners or create a new owner profile |
+| `GET` / `PUT` / `DELETE` | `/api/owners/:id` | View, update, or safely delete an owner profile |
+| `GET` / `POST` | `/api/vehicles` | List registered vehicles or create a vehicle-owner association |
+| `GET` / `PUT` / `DELETE` | `/api/vehicles/:plate` | View, update, or safely delete a vehicle record |
+| `GET` / `POST` | `/api/staff` | List valet staff members or onboard a new attendant |
+| `GET` / `PUT` / `DELETE` | `/api/staff/:id` | View, update, or safely delete a staff profile |
+
+### Machine Learning & Dynamic Pricing
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/predictions/status` | Model metadata card, validation metrics (MAE 4.85%), and disk presence |
+| `POST` | `/api/predictions/generate` | Trigger ML inference (`mode=historical_replay` or `mode=operational`) |
+| `GET` | `/api/predictions/occupancy` | Return persisted 24-hour occupancy horizon forecasts |
+| `GET` | `/api/predictions/pricing` | Return persisted dynamic pricing recommendations |
+| `GET` | `/api/sfpark/pricing-recommendations`| SFpark 4-band dynamic meter policy adjustment calculation |
+
+### Live Telemetry Ingestion
+
+| Method | Endpoint | Headers | Description |
+|---|---|---|---|
+| `POST` | `/api/telemetry/readings` | `x-telemetry-key` or `Bearer <key>` | Authenticated sensor reading ingestion (single or array up to 500) |
+| `GET` | `/api/telemetry/status` | None | Ingestion metrics, 48h counts, stream classification, and readiness |
+| `GET` | `/api/telemetry/recent` | `limit`, `offset`, `slot_type_id` | Paginated historical sensor telemetry observations |
+
+---
+
+## Testing and Quality Assurance
+
+ValetTrack includes an automated integration test suite that executes against live TimescaleDB instances:
+
+```bash
+# 1. Run complete automated integration test suite (30 test suites)
+npm test
+
+# 2. Run database invariants, schema constraints, and PL/pgSQL verification
+npm run db:verify
+
+# 3. Run frontend static analysis (Oxlint)
+npm run lint
+
+# 4. Verify release packaging hygiene and secret protection
 npm run package
 ```
 
----
+### Verified System Invariants
 
-### 🛑 Stopping & Maintenance Commands
+The 30 automated integration test suites (`tests/backend.test.js`) validate the following guarantees:
 
-| Action | Command | Details |
-|---|---|---|
-| **Stop Database** | `npm run db:down` | Stops the TimescaleDB Docker container safely |
-| **Development Reset** | `npm run db:reset` | Truncates tables, re-applies schema and seeds (dev mode only) |
-| **Check Container Status** | `docker compose ps` | Inspects container health and port bindings |
-
----
-
-### 🌐 Ports & Services Summary
-
-| Service | Port | Local URL / Host | Default Credentials / Info |
-|---|---|---|---|
-| **Frontend UI** | `5174` | `http://localhost:5174` | Vite + React 19 Client |
-| **Backend REST API** | `5000` | `http://localhost:5000` | Express API (`/api/health`, `/api/tickets`, etc.) |
-| **TimescaleDB / Postgres** | `5432` | `localhost:5432` | `User: valettrack`, `DB: valettrack_db`, `Password: valettrack_secret` |
-
----
-
-### 💡 Troubleshooting Common Issues
-
-* **Docker engine not running**: If `npm run db:up` fails with `failed to connect to the docker API at npipe://...` or `cannot connect to Docker daemon`, open **Docker Desktop** from your applications menu and wait until the Docker engine status is green / running.
-* **Port 5432 already allocated**: If you have a local PostgreSQL server already using port 5432, you can change `DB_PORT=5433` in `.env` and `compose.yaml` port binding will automatically map it to the container's 5432.
-* **Python packages missing**: If `npm run ml:train` fails with missing modules, ensure you have run `pip install -r requirements.txt` in your active Python environment.
-
----
-
-## 4. REST API Reference
-
-### System Health & Status
-* `GET /api/health`: Returns cluster status, database connection state, and hypertable metrics.
-
-### Facility Dashboard & Analytics
-* `GET /api/dashboard/summary`: Returns live capacity counts, slot distribution, and revenue summary.
-* `GET /api/analytics/daily`: Mathematically derived daily occupancy from stay duration intervals.
-* `GET /api/analytics/hourly`: Hourly average, peak, and minimum occupancy in latest chronological order.
-* `GET /api/analytics/continuous-aggregate`: Prematerialized TimescaleDB continuous aggregate rollups.
-
-### Machine Learning & Dynamic Pricing
-* `GET /api/predictions/status`: Returns trained ML model card, validation MAE/RMSE, and active status.
-* `POST /api/predictions/generate`: Triggers model inference to compute fresh 24h forecasts and store in DB (`mode=historical_replay` or `mode=operational`).
-* `GET /api/predictions/occupancy`: Returns persisted in-database occupancy horizon forecasts.
-* `GET /api/predictions/pricing`: Returns facility dynamic pricing recommendations derived from forecasts.
-* `GET /api/sfpark/pricing-recommendations`: SFpark 4-band dynamic pricing adjustment engine.
-
-### Operational Telemetry Ingestion (Live Sensors)
-* `POST /api/telemetry/readings`: Authenticated ingestion endpoint for genuine facility occupancy observations. Requires `x-telemetry-key` header or `Bearer` token (configured via `TELEMETRY_API_KEY`). Protected by constant-time secret comparison (`crypto.timingSafeEqual`) and requires strong non-placeholder keys in production (min 16 characters). Validates timestamp, slot category, capacity, occupied spaces, non-numeric strings, and mathematical consistency. Supports single objects or JSON arrays up to 500 records. Enforces database-level uniqueness via `idx_occupancy_readings_unique` on `(reading_time, slot_type_id)` with conflict-aware upsert.
-* `GET /api/telemetry/status`: Returns telemetry statistics, 48h reading counts, consecutive hourly stream length, staleness indicators (> 3h threshold), detected gap timestamps, and operational forecasting readiness (`ready_for_operational_forecast: true/false`, requiring 24 consecutive hourly observations for exact `lag_24h` feature calculation).
-* `GET /api/telemetry/recent`: Returns recent ingested facility readings with validated pagination (`limit`, `offset`, optional `slot_type_id`).
-
-### Parking Space Allocation & Management
-* `GET /api/slots`: List physical parking spaces with current occupancy status.
-* `POST /api/slots`: Create parking slot with synchronized identifier generation.
-* `GET /api/slots/:id`: View slot details and historical ticket records.
-* `DELETE /api/slots/:id`: Safely delete unreferenced parking slot (protected by referential integrity check returning HTTP 400 `CannotDelete` if historical tickets exist).
-* `GET /api/slots/recommendation`: Recommends optimal space based on vehicle powertrain and dimensions.
-* `POST /api/slots/recommend`: POST endpoint for vehicle-to-slot recommendation matching.
-* `PUT /api/slots/:id/status`: Update slot status (`Available`, `Occupied`, `Reserved`). Protected against manual changes while an active ticket is open.
-
-### Operational Tickets and Billing Lifecycle
-* `GET /api/tickets`: List operational tickets (`status=active` or `status=completed`).
-* `POST /api/tickets`: Atomically allocate slot and open ticket (`{ vehicle_no, slot_id, staff_id }`). Protected by row level locking and partial unique indexes.
-* `POST /api/tickets/:id/close`: Close ticket, calculate stay amount (`CEIL` hours * base rate), stamp exit timestamp, and release slot to Available. Double closure is rejected with HTTP 400 `AlreadyClosed`.
+1. **TimescaleDB Connectivity & Hypertables**: Verifies PostgreSQL 16 + TimescaleDB 2.30 and hypertable registration.
+2. **Dashboard Summary API**: Validates live capacity, slot states, and revenue aggregates.
+3. **Owner CRUD & Schema Validation**: Verifies unique phone/email rules and deletion protections.
+4. **Vehicle Registration**: Confirms foreign key relationships between owners and vehicles.
+5. **Ticket Lifecycle & Billing**: Verifies duration calculation, minimum 1-hour charge, and double-close rejection.
+6. **Concurrent Double-Allocation Protection**: Validates that simultaneous bookings targeting the same bay reject the losing transaction with HTTP 409 Conflict.
+7. **Concurrent Duplicate Vehicle Protection**: Rejects attempts to open multiple active tickets for the same vehicle across different bays with HTTP 409 Conflict (`VehicleAlreadyParked`).
+8. **Double Ticket Closure Rejection**: Asserts double-close attempts return HTTP 400 `AlreadyClosed`.
+9. **Time-Weighted Occupancy Mathematics**: Validates exact fractional occupancy formulas over disjoint ticket intervals.
+10. **Continuous Calendar Range Generation**: Confirms that zero-ticket dates return 0.0% occupancy without being omitted.
+11. **Midnight Interval Splitting**: Verifies stay duration interval splitting across calendar day boundaries.
+12. **Missing Observation Handling**: Asserts minimum occupancy correctly reaches 0.0% during unoccupied intervals.
+13. **Chronological Series Sorting**: Ensures all analytical time-series endpoints return ascending chronological data.
+14. **SFpark 4-Band Boundary Verification**: Validates pricing adjustments across 0%, 29.99%, 30%, 59.99%, 60%, 80%, 80.01%, and 100%.
+15. **Facility Dynamic Pricing Verification**: Verifies 4-tier elasticity curve in ₹ INR (+20% surge, 0% baseline, -10% incentive, -20% discount).
+16. **Primary Key Sequence Synchronization**: Confirms that inserting records after explicit seed IDs does not collide with primary key sequences.
+17. **Safe Seed Invariant Preservation**: Confirms that running `npm run db:seed` preserves existing `Occupied` and `Reserved` statuses without resetting them to `Available`.
+18. **Time-Series Lag Feature Exactness**: Validates that `lag_1h` strictly represents $t - 1\text{h}$ and `lag_24h` strictly represents $t - 24\text{h}$.
+19. **Information Leakage Prevention**: Confirms chronological train/validation splitting occurred before preprocessing, and holdout evaluation was conducted exclusively on 148 genuine observed targets.
+20. **ML Model Alignment & Recursive Inference**: Validates model file presence, Scikit-Learn 1.9.0 runtime compatibility, multi-horizon forecasts, and transaction safety.
+21. **Operational vs Demonstration Mode Handling**: Asserts that operational forecasting without live telemetry returns `INSUFFICIENT_CURRENT_DATA` instead of fabricating fake data.
+22. **Real-World Continuous Aggregates**: Queries both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
+23. **Dataset Import Audit Trail**: Confirms SHA256 checksums, processed row counts, and production overwrite safeguards in `dataset_imports`.
+24. **Secret Protection & Packaging Hygiene**: Verifies that `.env`, binary `.joblib` files, `.git`, and archives are excluded from release archives.
+25. **Telemetry Authentication & Validation**: Validates constant-time key checks, Bearer tokens, and input validation (rejecting future skews, malformed numbers, and capacity overflows).
+26. **Telemetry Ingestion & Gap Detection**: Verifies 25-hour batch ingestion, conflict-aware upserts, 24-hour consecutive lag readiness, and gap detection.
+27. **Referential Integrity Protection**: Asserts that deleting slots, staff, owners, or vehicles with active or historical ticket records is rejected with HTTP 400 `CannotDelete`.
+28. **Inference Security & Injection Protection**: Validates argument sanitation, rejecting shell metacharacters and unsupported modes with HTTP 400.
+29. **Hardened Prediction Fault Tolerance**: Guarantees rejection of malformed Python output, unsuccessful statuses, zero predictions, and stale cached predictions.
+30. **Stream Health Classification**: Verifies transition between `HEALTHY`, `DEGRADED`, `STALE`, and `UNAVAILABLE` stream classifications based on sensor feed timeliness.
 
 ---
 
-## 5. Automated Test Suite (30 Passing Test Suites)
+## Deployment
 
-The integration test suite (`tests/backend.test.js`) executes against the live database and validates all system invariants:
+### 1. Database Tier (Containerized TimescaleDB)
 
-1. **Fresh Database Initialization & TimescaleDB Connectivity**: Confirms PostgreSQL 16 + TimescaleDB 2.30 and verifies registered hypertables.
-2. **Dashboard Summary API**: Validates live metrics, slot counts, and capacity calculations.
-3. **Owner CRUD & Input Validation**: Tests creation, validation errors, update, and clean deletion.
-4. **Vehicle Registration**: Enforces valid foreign key references to owners.
-5. **Ticket Lifecycle & Availability Check**: Validates slot locking, duplicate booking rejection (HTTP 409), duplicate active vehicle ticket rejection (HTTP 409), duration billing calculation, 1-hour minimum charge, and double close rejection.
-6. **Concurrent Slot Allocation Protection (Different Vehicles, Same Slot)**: Launches simultaneous concurrent allocation requests on the exact same slot; asserts that exactly one succeeds (201) and the competing request is rejected (409 Conflict).
-7. **Concurrent Duplicate Vehicle Requests (Same Vehicle, Different Slots)**: Asserts that two concurrent booking requests for the same vehicle targeting different parking slots reject the duplicate with HTTP 409 Conflict (`VehicleAlreadyParked`).
-8. **Ticket Reopening & Duplicate Ticket Closure Rejection**: Asserts double-close attempts return HTTP 400 `AlreadyClosed`.
-9. **Exact Hourly Occupancy Math & Deterministic Fixtures**: Validates mathematically derived hourly metrics on known fixtures (e.g. 4 slots with 15m + 30m non-overlapping tickets yields exact 18.75% avg, 25.0% peak, 0.0% min).
-10. **Exact Daily Occupancy Values & Zero-Ticket Date Preservation**: Validates continuous multi-day calendar range generation where empty dates return 0.0% occupancy without being omitted.
-11. **Multi-Day Ticket Spanning Midnight Interval Splitting**: Validates exact stay duration splitting across midnight into distinct calendar days using the complete facility capacity denominator (`total_slots * 24.0`).
-12. **Missing Hourly Observations & Disjoint Interval Handling**: Validates empty-hour handling, true minimum occupancy reaching 0.0% during unoccupied gaps, and true peak occupancy.
-13. **Correct Recent Time Window Selection & Chronological Order**: Validates ascending chronological ordering of analytical series.
-14. **SFpark 4-Band Dynamic Pricing Boundary Tests**: Validates exact pricing adjustments across 0%, 29.99%, 30%, 59.99%, 60%, 80%, 80.01%, 100%, and the $0.25 minimum rate floor.
-15. **Facility Dynamic Pricing Policy Verification**: Validates 4-tier elasticity curve in ₹ INR (+20% surge, 0% standard, -10% incentive, -20% off-peak) and rejects invalid inputs.
-16. **Identifier Sequence Synchronization & Additional Slot Creation**: Validates that inserting records after explicit seed IDs does not cause primary key conflicts.
-17. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with active tickets and reserved bays preserves both `Occupied` and `Reserved` statuses without resetting them to `Available`.
-18. **Time Series Lag Feature Exact Timestamp Alignment**: Verifies that `lag_1h` is strictly $t - 1\text{h}$ and `lag_24h` is strictly $t - 24\text{h}$.
-19. **Prevention of Future Information Leakage During Model Validation**: Verifies chronological train/test split occurred before preprocessing, and holdout evaluation was conducted exclusively on 148 genuine observed targets.
-20. **Machine Learning Model Artifacts, Scikit-Learn Alignment & Live Inference**: Validates model persistence, Scikit-Learn 1.9.0 runtime alignment, multi-horizon forecast generation (+1h, +2h, +4h, etc.), and in-database storage with transaction rollback safety.
-21. **Operational Forecasting vs Historical Demonstration Mode Handling**: Asserts that operational forecasting without live telemetry returns `INSUFFICIENT_CURRENT_DATA` instead of fabricating observations.
-22. **Real World Hypertable Continuous Aggregates**: Executes analytical queries on both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
-23. **Dataset Import Manifest Audit Log & Overwrite Safeguards**: Confirms audit log entries with verified SHA256 checksums, exact row counts, and production overwrite safeguards.
-24. **Secret Protection, Distribution Package Hygiene & Release Packaging**: Verifies `.env` is excluded by git, release packaging script creates a clean distribution zip excluding all secrets and temporary assets, and asserts that production mode rejects missing/default DB passwords and telemetry keys.
-25. **Telemetry API Authentication & Validation Guards**: Validates missing or invalid API keys return HTTP 401 Unauthorized (`InvalidTelemetryKey`), Bearer tokens are accepted, invalid payloads (future timestamps, capacity overflow, count inconsistency, malformed number strings like '20abc', primitive values, negative pagination limits) return HTTP 400 `ValidationError`.
-26. **Telemetry Ingestion, Status Metrics & Operational Forecast Trigger**: Verifies 25-hour batch ingestion, database-level ON CONFLICT update deduplication, 24-hour consecutive lag readiness, gap detection revoking operational readiness, and refusal to impute synthetic data.
-27. **Slot, Valet Staff, Owner & Vehicle Referential Integrity Protection**: Verifies creation and deletion of unused slots, while asserting that deleting slots, valet staff, registered vehicle owners, or vehicles with operational ticket records is rejected with HTTP 400 `CannotDelete`.
-28. **Machine Learning Model Artifact Availability Guard & Injection Protection**: Verifies that the model status endpoint validates the physical presence of `occupancy_forecaster.joblib` artifact on disk rather than solely inspecting metadata, and asserts that prediction inference securely invokes child processes with array arguments (`execFile`), rejecting shell injection metacharacters and unsupported modes with HTTP 400 `InvalidPredictionMode`.
-29. **Hardened Prediction Inference: Malformed Output, Unsuccessful Status & Stale Prediction Rejection**: Asserts that inference output is strictly validated against malformed non-JSON output, invalid schemas, unsuccessful statuses, zero prediction counts, and Python execution crashes. Guarantees that stale predictions from previous runs are rejected if fresh records cannot be retrieved from the database.
-30. **Telemetry Readiness Edge Cases, Stream Classification & Feed Interruption Recovery**: Asserts that telemetry ingestion enforces past-only timestamps (rejecting future skews), max age limits (rejecting excessively stale observations > 7 days), mathematical consistency between counts and percentages, and capacity bounds. Verifies that `stream_health` accurately reflects `HEALTHY`, `DEGRADED`, `STALE`, and `UNAVAILABLE` states.
+The database tier is defined in [compose.yaml](compose.yaml) using the official `timescale/timescaledb:latest-pg16` image:
 
-Run the test suite at any time:
-```powershell
-npm test
+```bash
+# Launch container with automatic restart and persistent volume
+docker compose up -d
+
+# Verify container health check
+docker compose ps
+```
+
+The database volume `valettrack_pgdata` persists all tables, hypertables, and continuous aggregates across container restarts.
+
+---
+
+### 2. Backend API Tier (Node.js Service)
+
+Run the backend API under a process manager such as PM2 or systemd:
+
+```bash
+# Build environment configuration
+export NODE_ENV=production
+export DB_HOST=your-production-db-host
+export DB_PORT=5432
+export DB_USER=valettrack
+export DB_PASSWORD=your_strong_production_password
+export DB_NAME=valettrack_db
+export CLIENT_ORIGIN=https://valettrack.yourdomain.com
+export TELEMETRY_API_KEY=your_strong_telemetry_key_min16chars
+
+# Start backend service
+node server/src/index.js
 ```
 
 ---
 
-## 6. Oracle PL/SQL Academic Deliverable (`sql/oracle_valettrack.sql`)
+### 3. Frontend Client Tier (Static Asset Hosting)
 
-An isolated Oracle 21c PL/SQL implementation is provided for academic evaluation, containing:
-* BCNF Relational Schema (`OWNER_`, `Vehicle`, `ValetStaff`, `SlotType`, `ParkingSlot`, `Ticket`, `PricingPrediction`, `OccupancyPrediction`)
-* Primary key sequences (`seq_owner`, `seq_staff`, `seq_slot`, etc.)
-* Duration billing function (`fn_calculate_amount`) with 1-hour minimum charge
-* Stored procedures (`proc_open_ticket`, `proc_close_ticket`, `proc_log_occupancy_prediction`, `proc_log_pricing_prediction`)
-* Business rule triggers (`trg_ticket_before_insert`, `trg_ticket_after_insert`, `trg_ticket_after_update`)
-* Package interface (`pkg_valet_track` specification and body)
-* Complete demonstration block with error handling (`ORA-20002` double-close rejection)
+Generate the production static assets:
 
-> [!NOTE]
-> **Oracle Execution Verification Status**:
-> The script was executed and verified against a live **Oracle Database 21c Express Edition (Release 21.3.0.0.0)** instance running pluggable database `XEPDB1`. All DDL, DML, triggers, packages, demonstration routines, and queries completed successfully with exit code 0. In CI, GitHub Actions isolates this deliverable without introducing an Oracle container dependency into the TimescaleDB runner.
+```bash
+npm run build:client
+```
+
+Deploy the contents of `client/dist/` to your web server (Nginx, Caddy, Cloudflare Pages, or AWS S3/CloudFront). Example Nginx configuration:
+
+```nginx
+server {
+    listen 80;
+    server_name valettrack.yourdomain.com;
+    root /var/www/valettrack/client/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:5000/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
 
 ---
 
-## 6. Academic Deliverables & Platform Architecture Separation
+## Roadmap
 
-* **Academic Deliverable 1 (ER/EER & Relational Model)**: Documented in `docs/assessment_report.md` and `ValetTrack_DA_Report.pdf`. Covers entity-relationship modeling in Chen notation, total/partial participation constraints, and BCNF normalization removing transitive dependencies.
-* **Academic Deliverable 2 (Oracle PL/SQL Implementation)**: Documented in `Da2.pdf` and preserved in [`sql/oracle_valettrack.sql`](file:///sql/oracle_valettrack.sql). Features Oracle DDL, sequences, sample data, `fn_calculate_amount`, ticket procedures (`proc_open_ticket`, `proc_close_ticket`), prediction logging procedures, triggers (`trg_ticket_before_insert`, `trg_ticket_after_insert`, `trg_ticket_after_update`), the `pkg_valet_track` package, and an automated demonstration block.
-* **Application Deliverable (PostgreSQL & TimescaleDB System)**: The full-stack production software in this repository. Demonstrates high-performance time-series hypertables (5 hypertables), continuous aggregates (3 views), ACID concurrency controls, authenticated REST API, React 19 frontend with real-time analytics, and scikit-learn machine learning forecaster.
+The following architectural enhancements are planned based on existing codebase hooks:
+
+- [ ] **Automated Continuous Aggregate Refresh Policies**: Implement native TimescaleDB background worker policies (`add_continuous_aggregate_policy`) for unattended incremental rollups.
+- [ ] **Real-Time WebSocket / SSE Feed**: Replace polling with Server-Sent Events (SSE) or WebSockets to broadcast live slot occupancy shifts and ticket states to all connected operator terminals.
+- [ ] **Mobile Valet Attendant PWA**: Build an offline-capable Progressive Web App with optical barcode and QR scanning for rapid vehicle check-in and check-out at facility entrances.
+- [ ] **Multi-Facility Zoning & Tenancy**: Extend the schema with multi-facility foreign keys to manage multiple distributed garages and municipal parking districts from a single control pane.
+
+---
+
+## Contributing
+
+Contributions to ValetTrack are welcome. Please adhere to the following workflow:
+
+1. **Fork the Repository**: Create your personal fork on GitHub.
+2. **Create a Feature Branch**:
+   ```bash
+   git checkout -b feature/my-feature-name
+   ```
+3. **Implement Changes**: Write clean, modular code consistent with existing patterns.
+4. **Verify Tests & Linting**:
+   ```bash
+   npm test
+   npm run db:verify
+   npm run lint
+   ```
+5. **Commit Changes**: Use concise, conventional commit messages:
+   ```bash
+   git commit -m "feat(allocation): add proximity weighting to slot recommendation"
+   ```
+6. **Push and Open a Pull Request**: Push your branch to GitHub and submit a PR against `main`.
+
+---
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+```text
+MIT License
+Copyright (c) 2026 Udarsh Goyal
+```
+
+
+---
+
+## Acknowledgements
+
+- **City of Birmingham Parking Sensor Dataset**: Sourced from the [UCI Machine Learning Repository](https://archive.ics.uci.edu/dataset/482/parking+birmingham) (Daniel H. Stolfi, Enrique Alba, 2016).
+- **SFpark Pilot Street Sensor Dataset**: Sourced from the [San Francisco Municipal Transportation Agency (SFMTA)](https://www.sfmta.com/projects/sfpark) and the City and County of San Francisco.
+- **TimescaleDB Team**: For high-performance time-series extensions, hypertables, and continuous aggregation primitives on PostgreSQL.
+- **Scikit-Learn Community**: For robust machine learning estimators and time-series regressor implementations.
