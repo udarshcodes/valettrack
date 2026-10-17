@@ -23,8 +23,8 @@ export function OverviewPage() {
   const [error, setError] = useState(null);
 
   async function loadData() {
+    setRefreshing(true);
     try {
-      setRefreshing(true);
       const [sumRes, slotsRes] = await Promise.all([
         api.getDashboardSummary(),
         api.getSlots()
@@ -42,7 +42,34 @@ export function OverviewPage() {
   }
 
   useEffect(() => {
-    loadData();
+    let ignore = false;
+    async function init() {
+      try {
+        const [sumRes, slotsRes] = await Promise.all([
+          api.getDashboardSummary(),
+          api.getSlots()
+        ]);
+        if (!ignore) {
+          setData(sumRes);
+          setSlots(slotsRes);
+          setError(null);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading dashboard overview:', err);
+          setError(err.message || 'Failed to load dashboard metrics');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   if (loading) {

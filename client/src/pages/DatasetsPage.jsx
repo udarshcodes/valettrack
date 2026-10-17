@@ -52,8 +52,39 @@ export function DatasetsPage() {
   }
 
   useEffect(() => {
-    loadDatasets();
-  }, []);
+    let ignore = false;
+    async function init() {
+      try {
+        const [bSum, sSum, manRes] = await Promise.all([
+          api.getBirminghamSummary(),
+          api.getSFparkSummary(),
+          api.getDatasetManifest()
+        ]);
+        if (!ignore) {
+          setBhamSummary(bSum);
+          setSfSummary(sSum);
+          setManifests(manRes || []);
+        }
+
+        const [bHour, sHour] = await Promise.all([
+          api.getBirminghamHourly({ code: selectedCarPark, limit: 48 }),
+          api.getSFparkHourly({ district: selectedDistrict, limit: 48 })
+        ]);
+        if (!ignore) {
+          setBhamHourly(bHour);
+          setSfHourly(sHour);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading dataset analytics:', err);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedCarPark, selectedDistrict]);
 
   async function handleCarParkChange(code) {
     setSelectedCarPark(code);

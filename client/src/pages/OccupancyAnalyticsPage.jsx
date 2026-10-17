@@ -91,8 +91,65 @@ export function OccupancyAnalyticsPage() {
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    let ignore = false;
+    async function init() {
+      try {
+        const [bSum, sSum, slotStats, mlStat, occPreds, telemStat, recentTelem] = await Promise.all([
+          api.getBirminghamSummary(),
+          api.getSFparkSummary(),
+          api.getSlotTypeOccupancy(),
+          api.getPredictionStatus().catch(() => null),
+          api.getOccupancyPredictions().catch(() => []),
+          api.getTelemetryStatus().catch(() => null),
+          api.getRecentTelemetry({ limit: 5 }).catch(() => [])
+        ]);
+
+        if (ignore) return;
+
+        setMlStatus(mlStat);
+        setOccPredictions(occPreds || []);
+        setTelemetryStatus(telemStat);
+        setRecentTelemetry(recentTelem || []);
+
+        if (bSum?.carParks) {
+          setBhamCarParks(bSum.carParks);
+          if (!selectedCarPark && bSum.carParks[0]) {
+            setSelectedCarPark(bSum.carParks[0].system_code_number);
+          }
+        }
+
+        if (sSum?.districts) {
+          setSfDistricts(sSum.districts);
+          if (!selectedDistrict && sSum.districts[0]) {
+            setSelectedDistrict(sSum.districts[0].district_name);
+          }
+        }
+
+        setSlotTypeStats(slotStats || []);
+
+        const cp = selectedCarPark || bSum?.carParks?.[0]?.system_code_number || 'BHMBCCMKT01';
+        const dist = selectedDistrict || sSum?.districts?.[0]?.district_name || 'Downtown';
+
+        const [bHourly, sHourly] = await Promise.all([
+          api.getBirminghamHourly({ code: cp, limit: 72 }),
+          api.getSFparkHourly({ district: dist, limit: 72 })
+        ]);
+
+        if (!ignore) {
+          setBhamData(bHourly || []);
+          setSfData(sHourly || []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading occupancy analytics:', err);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
+  }, [selectedCarPark, selectedDistrict]);
 
   async function handleCarParkChange(code) {
     setSelectedCarPark(code);
@@ -305,57 +362,89 @@ export function OccupancyAnalyticsPage() {
                 </button>
               </div>
             </div>
-
             {/* Operational Telemetry Banner */}
-            <div className="mb-6 p-4 rounded-xl bg-[#06090D] border border-[#16202C] space-y-3 text-xs font-mono">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#16202C]/60">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${telemetryStatus?.operational_forecasting_ready ? 'bg-[#10E599] animate-pulse' : 'bg-amber-400'}`}></span>
-                    <span className="text-slate-300">
-                      Live Telemetry (Last 48h): <strong className="text-white">{telemetryStatus?.readings_last_48h ?? 0} reading(s)</strong>
+            {(() => {
+              const streamHealth = telemetryStatus?.stream_health || 
+                (telemetryStatus?.operational_forecasting_ready ? 'HEALTHY' : 
+                 (telemetryStatus?.is_stale ? 'STALE' : 
+                  ((telemetryStatus?.readings_last_48h ?? 0) === 0 ? 'UNAVAILABLE' : 'DEGRADED')));
+
+              const streamConfig = {
+                HEALTHY: {
+                  dot: 'bg-[#10E599] animate-pulse',
+                  badge: 'bg-[#10E599]/10 text-[#10E599] border-[#10E599]/30',
+                  label: '● HEALTHY - OPERATIONAL READY',
+                  tag: <span className="px-2 py-0.5 rounded bg-[#10E599]/20 text-[#10E599] font-bold border border-[#10E599]/30 text-[10px]">FEED ACTIVE</span>
+                },
+                DEGRADED: {
+                  dot: 'bg-amber-400',
+                  badge: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+                  label: `▲ DEGRADED (${telemetryStatus?.consecutive_hourly_readings ?? 0}/24h)`,
+                  tag: <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30 text-[10px]">GAPS IN STREAM</span>
+                },
+                STALE: {
+                  dot: 'bg-rose-500',
+                  badge: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+                  label: '✕ STALE STREAM (> 3h GAP)',
+                  tag: <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30 text-[10px]">FEED STALE</span>
+                },
+                UNAVAILABLE: {
+                  dot: 'bg-slate-500',
+                  badge: 'bg-slate-800 text-slate-400 border-slate-700',
+                  label: '○ TELEMETRY UNAVAILABLE',
+                  tag: null
+                }
+              }[streamHealth] || {
+                dot: 'bg-slate-500',
+                badge: 'bg-slate-800 text-slate-400 border-slate-700',
+                label: '○ CHECKING TELEMETRY',
+                tag: null
+              };
+
+              return (
+                <div className="mb-6 p-4 rounded-xl bg-[#06090D] border border-[#16202C] space-y-3 text-xs font-mono">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#16202C]/60">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2.5 h-2.5 rounded-full ${streamConfig.dot}`}></span>
+                        <span className="text-slate-300">
+                          Live Telemetry (Last 48h): <strong className="text-white">{telemetryStatus?.readings_last_48h ?? 0} reading(s)</strong>
+                        </span>
+                      </div>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-300">
+                        Consecutive Stream: <strong className={telemetryStatus?.consecutive_hourly_readings >= 24 ? 'text-[#10E599]' : 'text-amber-400'}>
+                          {telemetryStatus?.consecutive_hourly_readings ?? 0}/24 hours
+                        </strong>
+                      </span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-400">
+                        Latest: <strong className="text-slate-200">
+                          {telemetryStatus?.latest_reading ? new Date(telemetryStatus.latest_reading).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
+                        </strong>
+                      </span>
+                      {streamConfig.tag}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${streamConfig.badge}`}>
+                        {streamConfig.label}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-400">
+                    <p className="text-slate-300">
+                      <span className="text-slate-500">Readiness: </span>
+                      {telemetryStatus?.operational_readiness_message || 'Checking telemetry stream...'}
+                    </p>
+                    <span className="text-slate-500 shrink-0">
+                      Mode: <strong className="text-slate-300">{forecastMode === 'operational' ? 'Operational Telemetry' : 'Historical Demonstration Replay'}</strong>
                     </span>
                   </div>
-                  <span className="text-slate-600">|</span>
-                  <span className="text-slate-300">
-                    Consecutive Stream: <strong className={telemetryStatus?.consecutive_hourly_readings >= 24 ? 'text-[#10E599]' : 'text-amber-400'}>
-                      {telemetryStatus?.consecutive_hourly_readings ?? 0}/24 hours
-                    </strong>
-                  </span>
-                  <span className="text-slate-600">|</span>
-                  <span className="text-slate-400">
-                    Latest: <strong className="text-slate-200">
-                      {telemetryStatus?.latest_reading ? new Date(telemetryStatus.latest_reading).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
-                    </strong>
-                  </span>
-                  {telemetryStatus?.is_stale && (
-                    <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30 text-[10px]">
-                      STREAM STALE (&gt; 3h)
-                    </span>
-                  )}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
-                    telemetryStatus?.operational_forecasting_ready
-                      ? 'bg-[#10E599]/10 text-[#10E599] border-[#10E599]/30'
-                      : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                  }`}>
-                    {telemetryStatus?.operational_forecasting_ready ? '● READY FOR OPERATIONAL FORECAST' : '▲ INSUFFICIENT TELEMETRY'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-400">
-                <p className="text-slate-300">
-                  <span className="text-slate-500">Readiness: </span>
-                  {telemetryStatus?.operational_readiness_message || 'Checking telemetry stream...'}
-                </p>
-                <span className="text-slate-500 shrink-0">
-                  Mode: <strong className="text-slate-300">{forecastMode === 'operational' ? 'Operational Telemetry' : 'Historical Demonstration Replay'}</strong>
-                </span>
-              </div>
-            </div>
+              );
+            })()}
 
             {forecastNotice && (
               <div className={`mb-6 p-4 rounded-xl border flex items-start gap-3 text-xs font-mono ${

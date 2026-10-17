@@ -1122,3 +1122,125 @@ test('28. Machine Learning Model Artifact Availability Guard & Injection Protect
   assert.equal(invalidModeRes.status, 400);
   assert.equal(invalidModeRes.data.code, 'InvalidPredictionMode');
 });
+
+test('29. Hardened Prediction Inference: Malformed Output, Unsuccessful Status & Stale Prediction Rejection', async () => {
+  const mockScriptPath = path.resolve('tests/mocks/mock_predict.py');
+  process.env.PREDICTION_SCRIPT_PATH = mockScriptPath;
+
+  try {
+    // 1. Malformed non-JSON output from Python process
+    process.env.MOCK_PREDICT_SCENARIO = 'malformed';
+    const malformedRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(malformedRes.status, 500);
+    assert.equal(malformedRes.data.code, 'MalformedInferenceOutput');
+    assert.match(malformedRes.data.message, /invalid or non-JSON/i);
+
+    // 2. Invalid schema (non-object JSON)
+    process.env.MOCK_PREDICT_SCENARIO = 'invalid_schema';
+    const schemaRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(schemaRes.status, 500);
+    assert.equal(schemaRes.data.code, 'InvalidInferenceSchema');
+
+    // 3. Unsuccessful prediction status (e.g. FAILED)
+    process.env.MOCK_PREDICT_SCENARIO = 'failed_status';
+    const failedStatusRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(failedStatusRes.status, 500);
+    assert.equal(failedStatusRes.data.code, 'InferenceStatusFailed');
+    assert.match(failedStatusRes.data.message, /Simulated neural network convergence failure|reported unsuccessful status/i);
+
+    // 4. Zero predictions generated despite SUCCESS status
+    process.env.MOCK_PREDICT_SCENARIO = 'zero_predictions';
+    const zeroRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(zeroRes.status, 500);
+    assert.equal(zeroRes.data.code, 'ZeroPredictionsGenerated');
+
+    // 5. Stale prediction prevention: Python claims success, but records matching generation_time are not in database
+    process.env.MOCK_PREDICT_SCENARIO = 'stale_prevention';
+    const staleRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(staleRes.status, 500);
+    assert.equal(staleRes.data.code, 'FreshPredictionsNotFound');
+    assert.match(staleRes.data.message, /stale records were rejected/i);
+
+    // 6. Python process execution crash (non-zero exit)
+    process.env.MOCK_PREDICT_SCENARIO = 'crash';
+    const crashRes = await request('/api/predictions/generate?mode=historical_replay', { method: 'POST' });
+    assert.equal(crashRes.status, 500);
+    assert.equal(crashRes.data.code, 'PythonProcessFailed');
+  } finally {
+    delete process.env.PREDICTION_SCRIPT_PATH;
+    delete process.env.MOCK_PREDICT_SCENARIO;
+  }
+});
+
+test('30. Telemetry Readiness Edge Cases, Stream Classification & Feed Interruption Recovery', async () => {
+  const telemetryApiKey = process.env.TELEMETRY_API_KEY || 'valettrack_telemetry_dev_key';
+  const headers = { 'x-telemetry-key': telemetryApiKey };
+
+  // 1. Future timestamp (> 5 minutes in future) must be rejected
+  const futureTime = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  const futureRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      reading_time: futureTime,
+      slot_type_id: 1,
+      total_slots: 10,
+      occupied_slots: 4,
+      occupancy_pct: 40.0
+    })
+  });
+  assert.equal(futureRes.status, 400);
+  assert.match(futureRes.data.message, /observation timestamp is in the future/i);
+
+  // 2. Excessively stale timestamp (> 7 days old) must be rejected
+  const ancientTime = new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString();
+  const ancientRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      reading_time: ancientTime,
+      slot_type_id: 1,
+      total_slots: 10,
+      occupied_slots: 4,
+      occupancy_pct: 40.0
+    })
+  });
+  assert.equal(ancientRes.status, 400);
+  assert.match(ancientRes.data.message, /excessively stale/i);
+
+  // 3. Mathematical ratio discrepancy (> 1.0% diff between count ratio and occupancy_pct)
+  const mathRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 10,
+      occupied_slots: 4,
+      occupancy_pct: 85.0
+    })
+  });
+  assert.equal(mathRes.status, 400);
+  assert.match(mathRes.data.message, /mathematically inconsistent/i);
+
+  // 4. Occupied slots exceeding total capacity
+  const overflowRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 5,
+      occupied_slots: 12,
+      occupancy_pct: 100.0
+    })
+  });
+  assert.equal(overflowRes.status, 400);
+  assert.match(overflowRes.data.message, /cannot exceed total_slots/i);
+
+  // 5. Test stream_health classification endpoint
+  const statusRes = await request('/api/telemetry/status');
+  assert.equal(statusRes.status, 200);
+  assert.ok(['HEALTHY', 'DEGRADED', 'STALE', 'UNAVAILABLE'].includes(statusRes.data.stream_health));
+  assert.equal(typeof statusRes.data.operational_forecasting_ready, 'boolean');
+});

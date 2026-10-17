@@ -48,7 +48,34 @@ export function VehiclesPage() {
   }
 
   useEffect(() => {
-    loadData();
+    let ignore = false;
+    async function init() {
+      try {
+        const [vRes, oRes] = await Promise.all([
+          api.getVehicles(),
+          api.getOwners()
+        ]);
+        if (!ignore) {
+          setVehicles(vRes);
+          setOwners(oRes);
+          if (oRes.length > 0) {
+            setVehicleForm(prev => (prev.owner_id ? prev : { ...prev, owner_id: oRes[0].owner_id }));
+          }
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading vehicles and owners:', err);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   async function handleSaveOwner(e) {

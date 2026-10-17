@@ -63,6 +63,15 @@ export function TicketsPage() {
     }
   }
 
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
   async function prepareOpenModal() {
     try {
       const [vRes, sRes, sfRes] = await Promise.all([
@@ -88,20 +97,70 @@ export function TicketsPage() {
   }
 
   useEffect(() => {
-    loadTickets();
+    let ignore = false;
+    async function fetchTickets() {
+      try {
+        const res = await api.getTickets({ status: activeTab, search });
+        if (!ignore) {
+          setTickets(res.tickets || []);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error fetching tickets:', err);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    fetchTickets();
+    return () => {
+      ignore = true;
+    };
   }, [activeTab, search]);
 
   useEffect(() => {
-    if (searchParams.get('action') === 'open') {
-      prepareOpenModal();
-    }
+    let ignore = false;
+    const action = searchParams.get('action');
     const closeId = searchParams.get('closeTicketId');
+
+    if (action === 'open') {
+      Promise.all([
+        api.getVehicles(),
+        api.getSlots(),
+        api.getStaff()
+      ]).then(([vRes, sRes, sfRes]) => {
+        if (ignore) return;
+        setVehicles(vRes);
+        const avail = sRes.filter(s => s.status === 'Available');
+        setAvailableSlots(avail);
+        setStaffList(sfRes);
+
+        const preSlotId = searchParams.get('slotId');
+        setFormData({
+          vehicle_no: vRes.length > 0 ? vRes[0].vehicle_no : '',
+          slot_id: preSlotId || (avail.length > 0 ? avail[0].slot_id : ''),
+          staff_id: sfRes.length > 0 ? sfRes[0].staff_id : ''
+        });
+        setOpenModalOpen(true);
+      }).catch((err) => {
+        if (!ignore) console.error('Error preparing modal:', err);
+      });
+    }
+
     if (closeId) {
       api.getTicket(closeId).then((t) => {
-        setTicketToClose(t);
-        setCloseModalOpen(true);
+        if (!ignore) {
+          setTicketToClose(t);
+          setCloseModalOpen(true);
+        }
       }).catch(console.error);
     }
+
+    return () => {
+      ignore = true;
+    };
   }, [searchParams]);
 
   async function handleOpenTicket(e) {
@@ -136,11 +195,11 @@ export function TicketsPage() {
     }
   }
 
-  function calculatePreviewBilling(ticket) {
+  function calculatePreviewBilling(ticket, asOfTime = currentTime) {
     if (!ticket) return { hours: 1, amount: 50 };
-    const now = new Date();
-    const entry = new Date(ticket.entry_time);
-    const durationMs = Math.max(0, now.getTime() - entry.getTime());
+    const nowMs = typeof asOfTime === 'number' ? asOfTime : new Date(asOfTime).getTime();
+    const entryMs = new Date(ticket.entry_time).getTime();
+    const durationMs = Math.max(0, nowMs - entryMs);
     const durationMins = Math.round(durationMs / 60000);
     const rawHours = durationMs / (3600 * 1000);
     const billableHours = Math.max(1, Math.ceil(rawHours));
@@ -456,7 +515,7 @@ export function TicketsPage() {
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px]">EXIT TIMESTAMP</span>
-                    <span className="text-amber-400">{new Date().toLocaleTimeString()} (Now)</span>
+                    <span className="text-amber-400">{new Date(currentTime).toLocaleTimeString()} (Now)</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px]">MEASURED DURATION</span>

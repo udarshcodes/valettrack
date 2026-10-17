@@ -57,6 +57,35 @@ export async function getModelStatus(req, res, next) {
   }
 }
 
+function extractJsonFromOutput(stdout) {
+  if (!stdout || typeof stdout !== 'string') return null;
+  const objStart = stdout.indexOf('{');
+  const arrStart = stdout.indexOf('[');
+  let firstIdx = -1;
+  let lastIdx = -1;
+
+  if (objStart !== -1 && (arrStart === -1 || objStart < arrStart)) {
+    firstIdx = objStart;
+    lastIdx = stdout.lastIndexOf('}');
+  } else if (arrStart !== -1) {
+    firstIdx = arrStart;
+    lastIdx = stdout.lastIndexOf(']');
+  }
+
+  if (firstIdx === -1 || lastIdx === -1 || lastIdx <= firstIdx) return null;
+
+  let idx = firstIdx;
+  while (idx !== -1 && idx < lastIdx) {
+    try {
+      const candidate = stdout.slice(idx, lastIdx + 1);
+      return JSON.parse(candidate);
+    } catch {
+      idx = stdout.indexOf(stdout[firstIdx], idx + 1);
+    }
+  }
+  return null;
+}
+
 export async function runPredictionInference(req, res, next) {
   try {
     if (!fs.existsSync(METADATA_FILE) || !fs.existsSync(MODEL_FILE)) {
@@ -78,30 +107,86 @@ export async function runPredictionInference(req, res, next) {
     const mode = rawMode.trim().toLowerCase();
 
     const pythonPath = process.env.PYTHON_PATH || 'python';
-    const pythonScript = path.resolve(__dirname, '../../../scripts/predict_occupancy.py');
-    const { stdout, stderr } = await execFileAsync(pythonPath, [pythonScript, '--mode', mode, '--json'], {
-      timeout: 30000,
-      maxBuffer: 10 * 1024 * 1024
-    });
+    const pythonScript = process.env.PREDICTION_SCRIPT_PATH || path.resolve(__dirname, '../../../scripts/predict_occupancy.py');
 
-    let parsedResult = null;
+    let execResult;
     try {
-      const jsonStart = stdout.indexOf('{');
-      if (jsonStart !== -1) {
-        parsedResult = JSON.parse(stdout.slice(jsonStart));
-      }
-    } catch (_) {}
-
-    if (parsedResult && parsedResult.status === 'INSUFFICIENT_CURRENT_DATA') {
-      return res.status(200).json({
-        status: 'INSUFFICIENT_CURRENT_DATA',
-        mode: 'operational',
-        message: parsedResult.message,
-        generation_time: parsedResult.generation_time
+      execResult = await execFileAsync(pythonPath, [pythonScript, '--mode', mode, '--json'], {
+        timeout: 30000,
+        maxBuffer: 10 * 1024 * 1024
+      });
+    } catch (execErr) {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'PythonProcessFailed',
+        message: execErr.message || 'Python inference process failed to execute.',
+        stderr: execErr.stderr ? String(execErr.stderr).slice(0, 1000) : undefined
       });
     }
 
-    // Fetch the newly inserted predictions
+    const { stdout, stderr } = execResult;
+    const parsedResult = extractJsonFromOutput(stdout);
+
+    if (!parsedResult) {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'MalformedInferenceOutput',
+        message: 'Prediction inference failed: Python process returned invalid or non-JSON output.',
+        stdout: stdout ? stdout.slice(0, 1000) : undefined,
+        stderr: stderr ? stderr.slice(0, 1000) : undefined
+      });
+    }
+
+    if (typeof parsedResult !== 'object' || Array.isArray(parsedResult) || !parsedResult.status) {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'InvalidInferenceSchema',
+        message: 'Prediction inference returned an unrecognized data schema without a status field.',
+        details: parsedResult
+      });
+    }
+
+    if (parsedResult.status === 'INSUFFICIENT_CURRENT_DATA') {
+      return res.status(200).json({
+        status: 'INSUFFICIENT_CURRENT_DATA',
+        mode: 'operational',
+        message: parsedResult.message || 'Insufficient operational data for inference.',
+        generation_time: parsedResult.generation_time,
+        missing_hours_count: parsedResult.missing_hours_count
+      });
+    }
+
+    if (parsedResult.status !== 'SUCCESS') {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'InferenceStatusFailed',
+        message: parsedResult.message || `Prediction inference reported unsuccessful status: ${parsedResult.status}`,
+        details: parsedResult
+      });
+    }
+
+    const predCount = parseInt(parsedResult.predictions_count, 10);
+    if (isNaN(predCount) || predCount <= 0) {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'ZeroPredictionsGenerated',
+        message: 'Prediction inference finished with status SUCCESS but reported zero generated predictions.',
+        details: parsedResult
+      });
+    }
+
+    const genTime = parsedResult.generation_time;
+    const modelVer = parsedResult.model_version;
+    if (!genTime || !modelVer) {
+      return res.status(500).json({
+        error: 'InferenceExecutionError',
+        code: 'MissingProvenanceMetadata',
+        message: 'Prediction inference result is missing required generation_time or model_version metadata.',
+        details: parsedResult
+      });
+    }
+
+    // Fetch ONLY the freshly inserted predictions matching the exact generation run
     const latestOccupancy = await query(`
       SELECT 
         op.prediction_id,
@@ -113,9 +198,9 @@ export async function runPredictionInference(req, res, next) {
         op.model_version
       FROM occupancy_predictions op
       JOIN slot_types st ON op.slot_type_id = st.slot_type_id
-      ORDER BY op.prediction_time DESC, op.prediction_id DESC
-      LIMIT 18
-    `);
+      WHERE op.prediction_time = $1 AND op.model_version = $2
+      ORDER BY op.prediction_id ASC
+    `, [genTime, modelVer]);
 
     const latestPricing = await query(`
       SELECT 
@@ -129,9 +214,17 @@ export async function runPredictionInference(req, res, next) {
         pp.model_version
       FROM pricing_predictions pp
       JOIN slot_types st ON pp.slot_type_id = st.slot_type_id
-      ORDER BY pp.prediction_time DESC, pp.pricing_id DESC
-      LIMIT 18
-    `);
+      WHERE pp.prediction_time = $1 AND pp.model_version = $2
+      ORDER BY pp.pricing_id ASC
+    `, [genTime, modelVer]);
+
+    if (latestOccupancy.rows.length === 0 || latestPricing.rows.length === 0) {
+      return res.status(500).json({
+        error: 'InferencePersistenceError',
+        code: 'FreshPredictionsNotFound',
+        message: `Inference reported success for generation time '${genTime}', but fresh predictions were not found in database. Stale records were rejected.`
+      });
+    }
 
     res.status(201).json({
       message: 'Predictions successfully generated and stored in database.',

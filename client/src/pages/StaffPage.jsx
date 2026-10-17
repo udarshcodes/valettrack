@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Users, 
   PlusCircle, 
   Phone, 
   Clock, 
   Trash2, 
   Edit3, 
-  AlertCircle, 
-  CheckCircle2, 
   RefreshCw 
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -34,7 +31,27 @@ export function StaffPage() {
   }
 
   useEffect(() => {
-    loadStaff();
+    let ignore = false;
+    async function init() {
+      try {
+        const data = await api.getStaff();
+        if (!ignore) {
+          setStaffList(data);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading staff:', err);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   async function handleSaveStaff(e) {
@@ -108,9 +125,19 @@ export function StaffPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        {staffList.map((s) => (
-          <div key={s.staff_id} className="bg-[#0B1017] border border-[#16202C] rounded-2xl p-5 hover:border-[#10E599]/30 transition-all flex flex-col justify-between">
+      {loading ? (
+        <div className="flex items-center justify-center h-48 text-slate-400 font-mono text-sm">
+          <RefreshCw className="w-5 h-5 animate-spin mr-2 text-[#10E599]" />
+          Loading valet staff records...
+        </div>
+      ) : staffList.length === 0 ? (
+        <div className="p-8 text-center text-slate-500 font-mono text-sm bg-[#0B1017] border border-[#16202C] rounded-2xl">
+          No valet staff attendants registered.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {staffList.map((s) => (
+            <div key={s.staff_id} className="bg-[#0B1017] border border-[#16202C] rounded-2xl p-5 hover:border-[#10E599]/30 transition-all flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
@@ -165,6 +192,7 @@ export function StaffPage() {
           </div>
         ))}
       </div>
+      )}
 
       <Modal
         isOpen={modalOpen}

@@ -337,6 +337,17 @@ export async function getTelemetryStatus(req, res, next) {
       readinessMessage = `Operational forecasting ready: ${consecutiveHours} consecutive hourly observations available up to ${latestBucketTime.toISOString()}.`;
     }
 
+    let streamHealth = 'UNAVAILABLE';
+    if (buckets.length === 0) {
+      streamHealth = 'UNAVAILABLE';
+    } else if (isStale) {
+      streamHealth = 'STALE';
+    } else if (consecutiveHours < 24) {
+      streamHealth = 'DEGRADED';
+    } else {
+      streamHealth = 'HEALTHY';
+    }
+
     res.json({
       total_readings: parseInt(stats.total_readings, 10),
       readings_last_48h: count48h,
@@ -350,6 +361,7 @@ export async function getTelemetryStatus(req, res, next) {
       missing_hourly_buckets: missingHours,
       monitored_slot_types: parseInt(stats.monitored_slot_types, 10),
       operational_forecasting_ready: isReadyForOperational,
+      stream_health: streamHealth,
       status: isReadyForOperational ? 'OPERATIONAL_READY' : 'INSUFFICIENT_TELEMETRY',
       operational_readiness_message: readinessMessage,
       slot_types: slotBreakdownRes.rows

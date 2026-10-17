@@ -43,7 +43,33 @@ export function PricingAnalyticsPage() {
   }
 
   useEffect(() => {
-    loadPricingData();
+    let ignore = false;
+    async function init() {
+      try {
+        const [analysisRes, recRes, facRes] = await Promise.all([
+          api.getSFparkPricingAnalysis(),
+          api.getSFparkPricingRecommendations(),
+          api.getFacilityPricingRecommendations()
+        ]);
+        if (!ignore) {
+          setAnalysis(analysisRes);
+          setRecommendations(recRes);
+          setFacilityPricing(facRes);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Error loading pricing analytics:', err);
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const rateTierChartData = analysis?.rateTiers?.map(tier => ({

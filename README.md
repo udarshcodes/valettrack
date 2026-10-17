@@ -238,7 +238,7 @@ npm run client
 
 ---
 
-## 5. Automated Test Suite (28 Passing Test Suites)
+## 5. Automated Test Suite (30 Passing Test Suites)
 
 The integration test suite (`tests/backend.test.js`) executes against the live database and validates all system invariants:
 
@@ -270,11 +270,30 @@ The integration test suite (`tests/backend.test.js`) executes against the live d
 26. **Telemetry Ingestion, Status Metrics & Operational Forecast Trigger**: Verifies 25-hour batch ingestion, database-level ON CONFLICT update deduplication, 24-hour consecutive lag readiness, gap detection revoking operational readiness, and refusal to impute synthetic data.
 27. **Slot, Valet Staff, Owner & Vehicle Referential Integrity Protection**: Verifies creation and deletion of unused slots, while asserting that deleting slots, valet staff, registered vehicle owners, or vehicles with operational ticket records is rejected with HTTP 400 `CannotDelete`.
 28. **Machine Learning Model Artifact Availability Guard & Injection Protection**: Verifies that the model status endpoint validates the physical presence of `occupancy_forecaster.joblib` artifact on disk rather than solely inspecting metadata, and asserts that prediction inference securely invokes child processes with array arguments (`execFile`), rejecting shell injection metacharacters and unsupported modes with HTTP 400 `InvalidPredictionMode`.
+29. **Hardened Prediction Inference: Malformed Output, Unsuccessful Status & Stale Prediction Rejection**: Asserts that inference output is strictly validated against malformed non-JSON output, invalid schemas, unsuccessful statuses, zero prediction counts, and Python execution crashes. Guarantees that stale predictions from previous runs are rejected if fresh records cannot be retrieved from the database.
+30. **Telemetry Readiness Edge Cases, Stream Classification & Feed Interruption Recovery**: Asserts that telemetry ingestion enforces past-only timestamps (rejecting future skews), max age limits (rejecting excessively stale observations > 7 days), mathematical consistency between counts and percentages, and capacity bounds. Verifies that `stream_health` accurately reflects `HEALTHY`, `DEGRADED`, `STALE`, and `UNAVAILABLE` states.
 
 Run the test suite at any time:
 ```powershell
 npm test
 ```
+
+---
+
+## 6. Oracle PL/SQL Academic Deliverable (`sql/oracle_valettrack.sql`)
+
+An isolated Oracle 21c PL/SQL implementation is provided for academic evaluation, containing:
+* BCNF Relational Schema (`OWNER_`, `Vehicle`, `ValetStaff`, `SlotType`, `ParkingSlot`, `Ticket`, `PricingPrediction`, `OccupancyPrediction`)
+* Primary key sequences (`seq_owner`, `seq_staff`, `seq_slot`, etc.)
+* Duration billing function (`fn_calculate_amount`) with 1-hour minimum charge
+* Stored procedures (`proc_open_ticket`, `proc_close_ticket`, `proc_log_occupancy_prediction`, `proc_log_pricing_prediction`)
+* Business rule triggers (`trg_ticket_before_insert`, `trg_ticket_after_insert`, `trg_ticket_after_update`)
+* Package interface (`pkg_valet_track` specification and body)
+* Complete demonstration block with error handling (`ORA-20002` double-close rejection)
+
+> [!NOTE]
+> **Oracle Execution Verification Status**:
+> The script was executed and verified against a live **Oracle Database 21c Express Edition (Release 21.3.0.0.0)** instance running pluggable database `XEPDB1`. All DDL, DML, triggers, packages, demonstration routines, and queries completed successfully with exit code 0. In CI, GitHub Actions isolates this deliverable without introducing an Oracle container dependency into the TimescaleDB runner.
 
 ---
 
