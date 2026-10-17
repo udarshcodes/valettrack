@@ -7,31 +7,29 @@ export async function safeSeed() {
   try {
     await client.query('BEGIN');
 
-    console.log('1. Configuring Slot Types (Idempotent upsert)...');
+    console.log('1. Configuring Slot Types (Idempotent seed without overwriting customized rates)...');
     await client.query(`
       INSERT INTO slot_types (slot_type_id, type_name, base_rate) VALUES
         (1, 'Regular', 50.00),
         (2, 'Covered', 80.00),
         (3, 'EVCharging', 120.00)
-      ON CONFLICT (slot_type_id) DO UPDATE
-      SET type_name = EXCLUDED.type_name, base_rate = EXCLUDED.base_rate;
+      ON CONFLICT (slot_type_id) DO NOTHING;
     `);
 
-    console.log('2. Configuring baseline 24 physical parking spaces...');
+    console.log('2. Configuring baseline 24 physical parking spaces (preserving customized types & protected statuses)...');
     for (let i = 1; i <= 24; i++) {
       let slotTypeId = 1;
       if (i > 12 && i <= 20) slotTypeId = 2;
       else if (i > 20) slotTypeId = 3;
 
-      // Safe insert: preserve current operational status (Occupied if active ticket, Reserved if marked Reserved, Available otherwise)
+      // Safe insert: insert if missing, preserve existing slot_type_id on conflict, and preserve protected statuses
       await client.query(`
         INSERT INTO parking_slots (slot_id, slot_type_id, status)
         VALUES ($1, $2, 'Available')
         ON CONFLICT (slot_id) DO UPDATE
-        SET slot_type_id = EXCLUDED.slot_type_id,
-            status = CASE 
+        SET status = CASE 
               WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied'
-              WHEN parking_slots.status = 'Reserved' THEN 'Reserved'
+              WHEN parking_slots.status IN ('Reserved', 'Maintenance', 'Disabled') THEN parking_slots.status
               ELSE 'Available'
             END;
       `, [i, slotTypeId]);

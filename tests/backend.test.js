@@ -599,6 +599,10 @@ test('17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Sta
   // Mark slot 2 as Reserved
   await query(`UPDATE parking_slots SET status = 'Reserved' WHERE slot_id = 2;`);
 
+  // Customize slot type 1's base_rate to 65.00 and slot 10's slot_type_id to 3
+  await query(`UPDATE slot_types SET base_rate = 65.00 WHERE slot_type_id = 1;`);
+  await query(`UPDATE parking_slots SET slot_type_id = 3 WHERE slot_id = 10;`);
+
   try {
     let slot1 = await request('/api/slots/1');
     let slot2 = await request('/api/slots/2');
@@ -612,6 +616,12 @@ test('17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Sta
     assert.equal(slot1.data.status, 'Occupied', 'JavaScript seed must NOT reset occupied slot to Available');
     assert.equal(slot2.data.status, 'Reserved', 'JavaScript seed must NOT reset Reserved slot to Available');
 
+    let stRes = await query(`SELECT base_rate FROM slot_types WHERE slot_type_id = 1;`);
+    assert.equal(parseFloat(stRes.rows[0].base_rate), 65.00, 'JavaScript seed must NOT overwrite customized slot type rate');
+
+    let s10Res = await query(`SELECT slot_type_id FROM parking_slots WHERE slot_id = 10;`);
+    assert.equal(s10Res.rows[0].slot_type_id, 3, 'JavaScript seed must NOT silently overwrite customized slot type assignment');
+
     // Execute pure SQL seed script (sql/seed.sql)
     const seedSqlPath = path.resolve('sql/seed.sql');
     const seedSql = fs.readFileSync(seedSqlPath, 'utf-8');
@@ -620,9 +630,17 @@ test('17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Sta
     slot2 = await request('/api/slots/2');
     assert.equal(slot1.data.status, 'Occupied', 'SQL seed must NOT reset occupied slot to Available');
     assert.equal(slot2.data.status, 'Reserved', 'SQL seed must NOT reset Reserved slot to Available');
+
+    stRes = await query(`SELECT base_rate FROM slot_types WHERE slot_type_id = 1;`);
+    assert.equal(parseFloat(stRes.rows[0].base_rate), 65.00, 'SQL seed must NOT overwrite customized slot type rate');
+
+    s10Res = await query(`SELECT slot_type_id FROM parking_slots WHERE slot_id = 10;`);
+    assert.equal(s10Res.rows[0].slot_type_id, 3, 'SQL seed must NOT silently overwrite customized slot type assignment');
   } finally {
     await request(`/api/tickets/${ticketId}/close`, { method: 'POST' });
     await query(`UPDATE parking_slots SET status = 'Available' WHERE slot_id = 2;`);
+    await query(`UPDATE slot_types SET base_rate = 50.00 WHERE slot_type_id = 1;`);
+    await query(`UPDATE parking_slots SET slot_type_id = 1 WHERE slot_id = 10;`);
     const slot1After = await request('/api/slots/1');
     assert.equal(slot1After.data.status, 'Available');
   }
@@ -755,4 +773,21 @@ test('24. Secret Protection, Distribution Package Hygiene & Release Packaging', 
   if (fs.existsSync(pkgResult.archivePath)) {
     fs.unlinkSync(pkgResult.archivePath);
   }
+
+  // 3. Verify production database password security enforcement
+  const { execSync } = await import('child_process');
+
+  // A. Assert that production with default password (valettrack_secret) is rejected
+  assert.throws(() => {
+    execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'valettrack_secret\'; import(\'./server/src/config/env.js\');"', { stdio: 'pipe' });
+  }, /Command failed/, 'Production mode must reject default valettrack_secret password');
+
+  // B. Assert that production with missing password is rejected
+  assert.throws(() => {
+    execSync('node -e "process.env.NODE_ENV=\'production\'; delete process.env.DB_PASSWORD; import(\'./server/src/config/env.js\');"', { stdio: 'pipe' });
+  }, /Command failed/, 'Production mode must reject missing DB_PASSWORD');
+
+  // C. Assert that production with strong password is accepted
+  const strongRes = execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; import(\'./server/src/config/env.js\').then(m => { process.stdout.write(m.config.nodeEnv); });"', { encoding: 'utf-8' });
+  assert.equal(strongRes.trim(), 'production');
 });

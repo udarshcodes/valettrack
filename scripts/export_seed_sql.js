@@ -13,13 +13,13 @@ async function exportSeedSql() {
     sql += '-- 1. Slot Types\n';
     const st = await client.query('SELECT * FROM slot_types ORDER BY slot_type_id');
     for (const r of st.rows) {
-      sql += `INSERT INTO slot_types (slot_type_id, type_name, base_rate) VALUES (${r.slot_type_id}, '${r.type_name}', ${r.base_rate}) ON CONFLICT (slot_type_id) DO UPDATE SET type_name = EXCLUDED.type_name, base_rate = EXCLUDED.base_rate;\n`;
+      sql += `INSERT INTO slot_types (slot_type_id, type_name, base_rate) VALUES (${r.slot_type_id}, '${r.type_name}', ${r.base_rate}) ON CONFLICT (slot_type_id) DO NOTHING;\n`;
     }
 
     sql += '\n-- 2. Parking Slots\n';
     const ps = await client.query('SELECT * FROM parking_slots ORDER BY slot_id');
     for (const r of ps.rows) {
-      sql += `INSERT INTO parking_slots (slot_id, slot_type_id, status) VALUES (${r.slot_id}, ${r.slot_type_id}, 'Available') ON CONFLICT (slot_id) DO UPDATE SET slot_type_id = EXCLUDED.slot_type_id, status = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied' WHEN parking_slots.status = 'Reserved' THEN 'Reserved' ELSE 'Available' END;\n`;
+      sql += `INSERT INTO parking_slots (slot_id, slot_type_id, status) VALUES (${r.slot_id}, ${r.slot_type_id}, 'Available') ON CONFLICT (slot_id) DO UPDATE SET status = CASE WHEN EXISTS (SELECT 1 FROM tickets WHERE slot_id = EXCLUDED.slot_id AND exit_time IS NULL) THEN 'Occupied' WHEN parking_slots.status IN ('Reserved', 'Maintenance', 'Disabled') THEN parking_slots.status ELSE 'Available' END;\n`;
     }
 
     sql += '\nCOMMIT;\n';
