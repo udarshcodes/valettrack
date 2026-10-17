@@ -218,9 +218,9 @@ npm run client
 * `GET /api/sfpark/pricing-recommendations`: SFpark 4-band dynamic pricing adjustment engine.
 
 ### Operational Telemetry Ingestion (Live Sensors)
-* `POST /api/telemetry/readings`: Authenticated ingestion endpoint for genuine facility occupancy observations. Requires `x-telemetry-key` header (configured via `TELEMETRY_API_KEY`). Validates timestamp, slot category, capacity, occupied spaces, and mathematical consistency. Supports single objects or JSON arrays.
-* `GET /api/telemetry/status`: Returns telemetry statistics, 48h reading counts, and operational forecasting readiness (`ready_for_operational_forecast: true/false`).
-* `GET /api/telemetry/recent`: Returns recent ingested facility readings with pagination.
+* `POST /api/telemetry/readings`: Authenticated ingestion endpoint for genuine facility occupancy observations. Requires `x-telemetry-key` header or `Bearer` token (configured via `TELEMETRY_API_KEY`). Protected by constant-time secret comparison (`crypto.timingSafeEqual`) and requires strong non-placeholder keys in production (min 16 characters). Validates timestamp, slot category, capacity, occupied spaces, non-numeric strings, and mathematical consistency. Supports single objects or JSON arrays up to 500 records. Enforces database-level uniqueness via `idx_occupancy_readings_unique` on `(reading_time, slot_type_id)` with conflict-aware upsert.
+* `GET /api/telemetry/status`: Returns telemetry statistics, 48h reading counts, consecutive hourly stream length, staleness indicators (> 3h threshold), detected gap timestamps, and operational forecasting readiness (`ready_for_operational_forecast: true/false`, requiring 24 consecutive hourly observations for exact `lag_24h` feature calculation).
+* `GET /api/telemetry/recent`: Returns recent ingested facility readings with validated pagination (`limit`, `offset`, optional `slot_type_id`).
 
 ### Parking Space Allocation & Management
 * `GET /api/slots`: List physical parking spaces with current occupancy status.
@@ -265,11 +265,11 @@ The integration test suite (`tests/backend.test.js`) executes against the live d
 21. **Operational Forecasting vs Historical Demonstration Mode Handling**: Asserts that operational forecasting without live telemetry returns `INSUFFICIENT_CURRENT_DATA` instead of fabricating observations.
 22. **Real World Hypertable Continuous Aggregates**: Executes analytical queries on both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
 23. **Dataset Import Manifest Audit Log & Overwrite Safeguards**: Confirms audit log entries with verified SHA256 checksums, exact row counts, and production overwrite safeguards.
-24. **Secret Protection, Distribution Package Hygiene & Release Packaging**: Verifies `.env` is excluded by git, and release packaging script creates a clean distribution zip excluding all secrets and temporary assets.
-25. **Telemetry API Authentication & Validation Guards**: Validates missing or invalid API keys return HTTP 401 Unauthorized (`InvalidTelemetryKey`), while invalid payloads (future timestamps, capacity overflow, count inconsistency) return HTTP 400 `ValidationError`.
-26. **Telemetry Ingestion, Status Metrics & Operational Forecast Trigger**: Verifies sequential telemetry ingestion, operational readiness status reporting, and triggering operational ML forecasting on live facility data.
-27. **Slot & Valet Staff Referential Integrity Protection**: Verifies creation and deletion of unused slots, while asserting that deleting slots or valet staff with operational ticket records is rejected with HTTP 400 `CannotDelete`.
-28. **Machine Learning Model Artifact Availability Guard**: Verifies that the model status endpoint validates the physical presence of `occupancy_forecaster.joblib` artifact on disk rather than solely inspecting metadata.
+24. **Secret Protection, Distribution Package Hygiene & Release Packaging**: Verifies `.env` is excluded by git, release packaging script creates a clean distribution zip excluding all secrets and temporary assets, and asserts that production mode rejects missing/default DB passwords and telemetry keys.
+25. **Telemetry API Authentication & Validation Guards**: Validates missing or invalid API keys return HTTP 401 Unauthorized (`InvalidTelemetryKey`), Bearer tokens are accepted, invalid payloads (future timestamps, capacity overflow, count inconsistency, malformed number strings like '20abc', primitive values, negative pagination limits) return HTTP 400 `ValidationError`.
+26. **Telemetry Ingestion, Status Metrics & Operational Forecast Trigger**: Verifies 25-hour batch ingestion, database-level ON CONFLICT update deduplication, 24-hour consecutive lag readiness, gap detection revoking operational readiness, and refusal to impute synthetic data.
+27. **Slot, Valet Staff, Owner & Vehicle Referential Integrity Protection**: Verifies creation and deletion of unused slots, while asserting that deleting slots, valet staff, registered vehicle owners, or vehicles with operational ticket records is rejected with HTTP 400 `CannotDelete`.
+28. **Machine Learning Model Artifact Availability Guard & Injection Protection**: Verifies that the model status endpoint validates the physical presence of `occupancy_forecaster.joblib` artifact on disk rather than solely inspecting metadata, and asserts that prediction inference securely invokes child processes with array arguments (`execFile`), rejecting shell injection metacharacters and unsupported modes with HTTP 400 `InvalidPredictionMode`.
 
 Run the test suite at any time:
 ```powershell

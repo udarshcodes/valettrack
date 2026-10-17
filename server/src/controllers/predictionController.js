@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { query } from '../db/index.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const MODEL_DIR = path.resolve(__dirname, '../../../data/models');
@@ -66,9 +66,23 @@ export async function runPredictionInference(req, res, next) {
       });
     }
 
-    const mode = (req.body?.mode || req.query?.mode || 'historical_replay').toLowerCase();
+    const ALLOWED_MODES = ['historical_replay', 'operational'];
+    const rawMode = req.body?.mode || req.query?.mode || 'historical_replay';
+    if (typeof rawMode !== 'string' || !ALLOWED_MODES.includes(rawMode.trim().toLowerCase())) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        code: 'InvalidPredictionMode',
+        message: `Invalid prediction mode '${rawMode}'. Allowed modes are: ${ALLOWED_MODES.join(', ')}`
+      });
+    }
+    const mode = rawMode.trim().toLowerCase();
+
+    const pythonPath = process.env.PYTHON_PATH || 'python';
     const pythonScript = path.resolve(__dirname, '../../../scripts/predict_occupancy.py');
-    const { stdout, stderr } = await execAsync(`python "${pythonScript}" --mode ${mode} --json`);
+    const { stdout, stderr } = await execFileAsync(pythonPath, [pythonScript, '--mode', mode, '--json'], {
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024
+    });
 
     let parsedResult = null;
     try {

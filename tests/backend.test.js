@@ -788,9 +788,18 @@ test('24. Secret Protection, Distribution Package Hygiene & Release Packaging', 
     execSync('node -e "process.env.NODE_ENV=\'production\'; delete process.env.DB_PASSWORD; import(\'./server/src/config/env.js\');"', { stdio: 'pipe' });
   }, /Command failed/, 'Production mode must reject missing DB_PASSWORD');
 
-  // C. Assert that production with strong password is accepted
-  const strongRes = execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; import(\'./server/src/config/env.js\').then(m => { process.stdout.write(m.config.nodeEnv); });"', { encoding: 'utf-8' });
-  assert.equal(strongRes.trim(), 'production');
+  // D. Assert that production with missing or placeholder TELEMETRY_API_KEY is rejected
+  assert.throws(() => {
+    execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; process.env.TELEMETRY_API_KEY=\'valettrack_telemetry_dev_key\'; import(\'./server/src/config/env.js\');"', { stdio: 'pipe' });
+  }, /Command failed/, 'Production mode must reject default placeholder TELEMETRY_API_KEY');
+
+  assert.throws(() => {
+    execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; delete process.env.TELEMETRY_API_KEY; import(\'./server/src/config/env.js\');"', { stdio: 'pipe' });
+  }, /Command failed/, 'Production mode must reject missing TELEMETRY_API_KEY');
+
+  // E. Assert that production with valid strong password and strong telemetry key is accepted
+  const strongProdRes = execSync('node -e "process.env.NODE_ENV=\'production\'; process.env.DB_PASSWORD=\'Strong_Enterprise_Password_99!\'; process.env.TELEMETRY_API_KEY=\'Strong_Telemetry_Production_Secret_Key_2026\'; import(\'./server/src/config/env.js\').then(m => { process.stdout.write(m.config.nodeEnv); });"', { encoding: 'utf-8' });
+  assert.equal(strongProdRes.trim(), 'production');
 });
 
 test('25. Telemetry API Authentication & Validation Guards', async () => {
@@ -820,7 +829,22 @@ test('25. Telemetry API Authentication & Validation Guards', async () => {
   });
   assert.equal(badKeyRes.status, 401, 'Request with bad key must return 401');
 
-  // C. Valid key with future timestamp
+  // C. Valid Bearer token authentication
+  const bearerRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'authorization': 'Bearer valettrack_telemetry_dev_key' },
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: 20,
+      occupied_slots: 5,
+      occupancy_pct: 25.0,
+      source: 'test_bearer_stream'
+    })
+  });
+  assert.equal(bearerRes.status, 201, 'Request with valid Bearer token must succeed');
+
+  // D. Valid key with future timestamp
   const futureDate = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const futureRes = await request('/api/telemetry/readings', {
     method: 'POST',
@@ -835,7 +859,7 @@ test('25. Telemetry API Authentication & Validation Guards', async () => {
   assert.equal(futureRes.status, 400, 'Future timestamp must be rejected with 400');
   assert.ok(futureRes.data.message.includes('future'));
 
-  // D. Valid key with occupied > total
+  // E. Valid key with occupied > total
   const overflowRes = await request('/api/telemetry/readings', {
     method: 'POST',
     headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
@@ -848,7 +872,28 @@ test('25. Telemetry API Authentication & Validation Guards', async () => {
   });
   assert.equal(overflowRes.status, 400, 'occupied_slots > total_slots must return 400');
 
-  // E. Valid key with mathematically inconsistent occupancy_pct
+  // F. Strict numeric validation: Reject string with non-numeric characters ('20abc')
+  const malformedNumRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+    body: JSON.stringify({
+      reading_time: new Date().toISOString(),
+      slot_type_id: 1,
+      total_slots: '20abc',
+      occupied_slots: 10
+    })
+  });
+  assert.equal(malformedNumRes.status, 400, 'Malformed number string must be rejected with 400');
+
+  // G. Primitive payload rejection
+  const primRes = await request('/api/telemetry/readings', {
+    method: 'POST',
+    headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+    body: JSON.stringify([null])
+  });
+  assert.equal(primRes.status, 400, 'Null record in array must be rejected with 400');
+
+  // H. Valid key with mathematically inconsistent occupancy_pct
   const mismatchRes = await request('/api/telemetry/readings', {
     method: 'POST',
     headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
@@ -861,6 +906,16 @@ test('25. Telemetry API Authentication & Validation Guards', async () => {
     })
   });
   assert.equal(mismatchRes.status, 400, 'Inconsistent percentage must return 400');
+
+  // I. Query pagination parameter validation
+  const badLimitRes = await request('/api/telemetry/recent?limit=-1');
+  assert.equal(badLimitRes.status, 400, 'Negative limit must be rejected with 400');
+
+  const badOffsetRes = await request('/api/telemetry/recent?offset=-5');
+  assert.equal(badOffsetRes.status, 400, 'Negative offset must be rejected with 400');
+
+  // Clean temporary reading
+  await query(`DELETE FROM occupancy_readings WHERE source = 'test_bearer_stream';`);
 });
 
 test('26. Telemetry Ingestion, Status Metrics & Operational Forecast Trigger', async () => {
@@ -869,8 +924,8 @@ test('26. Telemetry Ingestion, Status Metrics & Operational Forecast Trigger', a
 
   const now = new Date();
   const sampleReadings = [];
-  // Build 14 hours of sequential telemetry readings within last 18 hours
-  for (let h = 14; h >= 1; h--) {
+  // Build 25 hours of sequential hourly telemetry readings within last 25 hours
+  for (let h = 25; h >= 1; h--) {
     const readingTime = new Date(now.getTime() - h * 3600 * 1000);
     const occ = 10 + (h % 5);
     sampleReadings.push({
@@ -884,29 +939,62 @@ test('26. Telemetry Ingestion, Status Metrics & Operational Forecast Trigger', a
   }
 
   try {
-    // 1. Ingest batch telemetry
+    // 1. Ingest batch telemetry (25 hours)
     const ingestRes = await request('/api/telemetry/readings', {
       method: 'POST',
       headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
       body: JSON.stringify(sampleReadings)
     });
     assert.equal(ingestRes.status, 201);
-    assert.equal(ingestRes.data.count_inserted, 14);
+    assert.equal(ingestRes.data.count_inserted, 25);
 
-    // 2. Verify status endpoint reports readiness
+    // 2. Re-ingest exact same readings to verify database-level conflict handling
+    const reIngestRes = await request('/api/telemetry/readings', {
+      method: 'POST',
+      headers: { 'x-telemetry-key': 'valettrack_telemetry_dev_key' },
+      body: JSON.stringify(sampleReadings)
+    });
+    assert.equal(reIngestRes.status, 201);
+    assert.equal(reIngestRes.data.count_inserted, 0, 'Re-ingested duplicate rows must not inflate insert count');
+    assert.equal(reIngestRes.data.count_updated, 25, 'Re-ingested rows must be updated via ON CONFLICT');
+
+    // 3. Verify status endpoint reports operational readiness
     const statusRes = await request('/api/telemetry/status');
     assert.equal(statusRes.status, 200);
-    assert.ok(statusRes.data.readings_last_48h >= 14);
+    assert.ok(statusRes.data.readings_last_48h >= 24);
+    assert.ok(statusRes.data.consecutive_hourly_readings >= 24, 'Must report at least 24 consecutive hours');
+    assert.equal(statusRes.data.is_stale, false);
     assert.equal(statusRes.data.operational_forecasting_ready, true);
     assert.equal(statusRes.data.status, 'OPERATIONAL_READY');
 
-    // 3. Trigger operational inference with real ingested telemetry
+    // 4. Trigger operational inference with real ingested telemetry
     const opGenRes = await request('/api/predictions/generate?mode=operational', { method: 'POST' });
-    assert.equal(opGenRes.status, 201, 'Operational forecasting must succeed with sufficient telemetry');
+    assert.equal(opGenRes.status, 201, 'Operational forecasting must succeed with 24h consecutive telemetry');
     assert.equal(opGenRes.data.mode, 'operational');
     assert.ok(opGenRes.data.occupancy_predictions.length > 0);
     assert.ok(opGenRes.data.pricing_predictions.length > 0);
     assert.ok(opGenRes.data.occupancy_predictions[0].model_version.includes('operational'));
+
+    // 5. Gap detection test: delete an observation from the middle (5 hours ago)
+    const gapTargetTime = new Date(now.getTime() - 5 * 3600 * 1000).toISOString();
+    await query(`
+      DELETE FROM occupancy_readings 
+      WHERE source = 'test_telemetry_stream' 
+        AND reading_time >= $1::timestamptz - interval '30 minutes' 
+        AND reading_time <= $1::timestamptz + interval '30 minutes';
+    `, [gapTargetTime]);
+
+    // Check status after creating gap
+    const gapStatusRes = await request('/api/telemetry/status');
+    assert.equal(gapStatusRes.status, 200);
+    assert.equal(gapStatusRes.data.operational_forecasting_ready, false, 'Gap in sequence must revoke operational readiness');
+    assert.ok(gapStatusRes.data.missing_hourly_buckets.length > 0, 'Missing hourly buckets must be detected');
+
+    // Attempting operational forecast with gap must return INSUFFICIENT_CURRENT_DATA
+    const gapGenRes = await request('/api/predictions/generate?mode=operational', { method: 'POST' });
+    assert.equal(gapGenRes.status, 200);
+    assert.equal(gapGenRes.data.status, 'INSUFFICIENT_CURRENT_DATA');
+    assert.ok(gapGenRes.data.message.includes('Missing'));
   } finally {
     // Clean up test telemetry
     await query(`DELETE FROM occupancy_readings WHERE source = 'test_telemetry_stream';`);
@@ -935,9 +1023,19 @@ test('27. Slot & Valet Staff Referential Integrity Protection', async () => {
   const rejectStaffRes = await request('/api/staff/1', { method: 'DELETE' });
   assert.equal(rejectStaffRes.status, 400);
   assert.equal(rejectStaffRes.data.error, 'CannotDelete');
+
+  // 4. Attempt to delete Owner 1 (who has registered vehicles) -> must be rejected with 400
+  const rejectOwnerRes = await request('/api/owners/1', { method: 'DELETE' });
+  assert.equal(rejectOwnerRes.status, 400);
+  assert.equal(rejectOwnerRes.data.error, 'CannotDelete');
+
+  // 5. Attempt to delete Vehicle TN-09-AB-1234 (which has historical tickets) -> must be rejected with 400
+  const rejectVehicleRes = await request('/api/vehicles/TN-09-AB-1234', { method: 'DELETE' });
+  assert.equal(rejectVehicleRes.status, 400);
+  assert.equal(rejectVehicleRes.data.error, 'CannotDelete');
 });
 
-test('28. Machine Learning Model Artifact Availability Guard', async () => {
+test('28. Machine Learning Model Artifact Availability Guard & Injection Protection', async () => {
   const modelJoblibPath = path.resolve('data/models/occupancy_forecaster.joblib');
   assert.ok(fs.existsSync(modelJoblibPath), 'Model joblib artifact must exist in repository');
 
@@ -945,4 +1043,13 @@ test('28. Machine Learning Model Artifact Availability Guard', async () => {
   assert.equal(statusRes.status, 200);
   assert.equal(statusRes.data.model_available, true);
   assert.equal(statusRes.data.model_status, 'ACTIVE');
+
+  // Regression: Command injection and unauthorized prediction mode rejection
+  const injectRes = await request('/api/predictions/generate?mode=historical_replay;%20echo%20hacked', { method: 'POST' });
+  assert.equal(injectRes.status, 400);
+  assert.equal(injectRes.data.code, 'InvalidPredictionMode');
+
+  const invalidModeRes = await request('/api/predictions/generate?mode=unsupported_mode', { method: 'POST' });
+  assert.equal(invalidModeRes.status, 400);
+  assert.equal(invalidModeRes.data.code, 'InvalidPredictionMode');
 });

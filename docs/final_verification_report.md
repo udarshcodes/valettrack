@@ -301,7 +301,29 @@ Output:
 * Packaging Hygiene:  EXCLUDED node_modules, .git, scratch, *.joblib, raw archives
 === Release Packaging Successfully Completed ===
 ```
-*Verified:* `.env` is completely excluded from distributions; only placeholder configurations are tracked.
+### DEF-18: Telemetry Authentication & Production Credential Hardening
+* *Root Cause:* Ingestion key was compared via standard equality without constant-time comparison, and production configuration did not enforce a strong, non-placeholder `TELEMETRY_API_KEY`.
+* *Remediation:* Implemented `crypto.timingSafeEqual` in `server/src/middleware/authTelemetry.js` to eliminate timing attack side-channels. Enforced production environment validation in `server/src/config/env.js` requiring explicit, non-default credentials (minimum 16 characters).
+
+### DEF-19: Telemetry Concurrency & Database Uniqueness
+* *Root Cause:* Telemetry deduplication relied only on application-level `SELECT` checks prior to insertion, vulnerable to concurrent requests, and TimescaleDB hypertable unique constraints required the time partition column.
+* *Remediation:* Created unique index `idx_occupancy_readings_unique` on `occupancy_readings (reading_time, slot_type_id)`. Updated ingestion queries to execute atomic `ON CONFLICT DO UPDATE` upserts within ACID transactions, returning accurate counts for inserted versus updated records.
+
+### DEF-20: Operational Forecasting Lag-24h Requirement & Gap Detection
+* *Root Cause:* Operational readiness only counted reading occurrences within 48 hours without validating chronological hourly continuity, risking missing intervals when calculating the model's `lag_24h` feature.
+* *Remediation:* Synchronized operational readiness criteria between `telemetryController.js` and `predict_occupancy.py`. Both now normalize to `date_trunc('hour', reading_time)`, check that the latest reading is within 3 hours (freshness), and verify that all 24 consecutive hourly observations are present without gaps. Missing hours transparently report `INSUFFICIENT_CURRENT_DATA` refusing to impute fake observations.
+
+### DEF-21: Child Process Command Injection Elimination
+* *Root Cause:* Prediction generation invoked `exec` with shell string interpolation (`python script.py --mode ${mode}`), which could be susceptible to shell metacharacter injection if an untrusted mode was supplied.
+* *Remediation:* Replaced `exec` with `execFileAsync` in `predictionController.js`, passing command arguments as an array (`[pythonScript, '--mode', mode, '--json']`). Strictly whitelisted mode to `['historical_replay', 'operational']`, rejecting any other value with HTTP 400 `InvalidPredictionMode`.
+
+### DEF-22: Oracle SQL Deliverable PL/SQL Line Breaks & Syntax Cleanliness
+* *Root Cause:* PDF extraction artifacts caused broken line breaks inside string literals and introduced stray tokens (`output`) on comment wraps in `sql/oracle_valettrack.sql`.
+* *Remediation:* Formatted `sql/oracle_valettrack.sql` into a clean, standalone, syntactically valid Oracle PL/SQL script without broken line splits or stray tokens.
+
+### DEF-23: Automated Continuous Verification (CI)
+* *Root Cause:* Repository lacked a continuous integration workflow to validate code changes across environments automatically.
+* *Remediation:* Added `.github/workflows/ci.yml` providing two matrix jobs: (1) frontend linting, build, and packaging hygiene, and (2) database initialization, seeding, SQL verification, ML training, and backend integration testing against TimescaleDB.
 
 ---
 
@@ -324,8 +346,15 @@ Output:
 - [x] 24-step autoregressive recursive multi-step forecasting
 - [x] Dataset import validation and production overwrite safeguards
 - [x] Automated release packaging script with secret exclusion assertions
+- [x] Authenticated telemetry ingestion boundary with constant-time comparison
+- [x] Database-level hypertable uniqueness on `occupancy_readings (reading_time, slot_type_id)`
+- [x] Synchronized 24-hour lag readiness and hourly gap detection
+- [x] Command injection elimination via `execFile` and mode whitelisting
+- [x] Referential integrity protection on slots, staff, owners, and vehicles
+- [x] Standalone Oracle PL/SQL deliverable matching DA2 specification
+- [x] GitHub Actions CI workflow in `.github/workflows/ci.yml`
 - [x] React 19 / Vite frontend production compilation (clean build)
-- [x] All 24 integration test suites executed and passing against live database
+- [x] All 28 integration test suites executed and passing against live database
 
 ### Category 2: Implemented but Not Independently Verified
 *(None. All implemented features were independently executed and asserted.)*
@@ -334,7 +363,7 @@ Output:
 *(None. All requirements in the audit master prompt have been completed.)*
 
 ### Category 4: Blocked by an Unavailable External Dependency
-*(None. Live TimescaleDB, Python 3.12, Node.js 24, and Vite environments are fully operational.)*
+- **Physical Sensor Field Hardware**: Software ingestion endpoint (`POST /api/telemetry/readings`), validation, and forecasting triggers are 100% complete and verified with live test streams. Physical hardware field deployment at the physical parking facility remains the operational boundary.
 
 ---
 
@@ -345,7 +374,7 @@ Output:
 2. **SFpark Full Dataset Streaming Memory Footprint:**  
    The SFpark archive contains 7,902,290 records (~1.49 GB uncompressed). Streaming ingestion directly pipes into PostgreSQL `COPY STDIN`. Development imports with `--limit` are protected by safeguards preventing accidental replacement of production hypertable data.
 3. **Operational Forecasting vs Historical Demonstration:**  
-   Because Birmingham sensor readings terminate in December 2016, predictions generated from this corpus represent **Historical Demonstration / Replay Mode**, not real-time operational forecasts. When real-time facility readings are absent, operational mode transparently indicates `INSUFFICIENT_CURRENT_DATA` rather than fabricating synthetic observations.
+   Because Birmingham sensor readings terminate in December 2016, predictions generated from this corpus represent **Historical Demonstration / Replay Mode**, not real-time operational forecasts. When real-time facility readings are absent or contain gaps, operational mode transparently indicates `INSUFFICIENT_CURRENT_DATA` rather than fabricating synthetic observations.
 
 ---
 
@@ -370,7 +399,7 @@ npm run db:seed
 npm run ml:train
 npm run ml:predict
 
-# 5. Execute Automated Integration Tests (24 Passing Suites)
+# 5. Execute Automated Integration Tests (28 Passing Suites)
 npm test
 
 # 6. Build Frontend Production Bundle
@@ -385,3 +414,4 @@ npm run server
 # Terminal 2: Frontend Client (port 5174)
 npm run client
 ```
+

@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS occupancy_readings (
     PRIMARY KEY (reading_id, reading_time)
 );
 SELECT create_hypertable('occupancy_readings', 'reading_time', if_not_exists => TRUE);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_occupancy_readings_unique ON occupancy_readings (reading_time, slot_type_id);
 
 -- 3.2 Occupancy Predictions
 CREATE TABLE IF NOT EXISTS occupancy_predictions (

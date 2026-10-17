@@ -100,17 +100,16 @@ def generate_predictions(mode='historical_replay', clean_existing=True):
         if mode == 'operational':
             # Operational forecasting: check for genuine recent facility sensor readings within last 48h
             cur.execute("""
-                SELECT reading_time, ROUND(AVG(occupancy_pct), 2) as avg_occ
+                SELECT date_trunc('hour', reading_time) as bucket, ROUND(AVG(occupancy_pct), 2) as avg_occ
                 FROM occupancy_readings
                 WHERE reading_time >= %s - interval '48 hours'
-                GROUP BY reading_time
-                ORDER BY reading_time ASC;
+                GROUP BY date_trunc('hour', reading_time)
+                ORDER BY bucket ASC;
             """, [now_utc])
             live_rows = cur.fetchall()
             
-            if len(live_rows) < 12:
-                print("Notice: Insufficient recent live facility sensor observations (< 12 hours) within last 48h.")
-                print("ValetTrack refuses to fabricate synthetic observations for operational forecasting.")
+            if not live_rows:
+                print("Notice: No live facility sensor observations within last 48h.")
                 return {
                     "status": "INSUFFICIENT_CURRENT_DATA",
                     "mode": "operational",
@@ -119,9 +118,36 @@ def generate_predictions(mode='historical_replay', clean_existing=True):
                     "generation_time": generation_time.isoformat()
                 }
             
-            # Setup operational series
-            obs_lookup = {r[0]: float(r[1]) for r in live_rows}
-            anchor_time = max(obs_lookup.keys()).replace(minute=0, second=0, microsecond=0)
+            latest_bucket = live_rows[-1][0]
+            hours_since_latest = (now_utc - latest_bucket).total_seconds() / 3600.0
+            if hours_since_latest > 3.0:
+                print(f"Notice: Latest telemetry reading ({latest_bucket.isoformat()}) is stale ({hours_since_latest:.1f} hours old).")
+                return {
+                    "status": "INSUFFICIENT_CURRENT_DATA",
+                    "mode": "operational",
+                    "message": f"Operational forecasting halted: latest telemetry reading ({latest_bucket.isoformat()}) is stale ({hours_since_latest:.1f} hours old, max 3.0h allowed). Fresh sensor readings required.",
+                    "generation_time": generation_time.isoformat()
+                }
+            
+            bucket_map = {r[0]: float(r[1]) for r in live_rows}
+            missing_hours = []
+            for k in range(24):
+                expected_hour = latest_bucket - timedelta(hours=k)
+                if expected_hour not in bucket_map:
+                    missing_hours.append(expected_hour.isoformat())
+            
+            if missing_hours:
+                print(f"Notice: Gaps detected in operational telemetry ({len(missing_hours)} missing hours).")
+                return {
+                    "status": "INSUFFICIENT_CURRENT_DATA",
+                    "mode": "operational",
+                    "message": f"Operational forecasting requires 24 consecutive hourly readings for lag_24h feature calculation. Missing {len(missing_hours)} hour(s): {missing_hours[:3]}",
+                    "generation_time": generation_time.isoformat(),
+                    "missing_hours_count": len(missing_hours)
+                }
+            
+            obs_lookup = bucket_map
+            anchor_time = latest_bucket.replace(minute=0, second=0, microsecond=0)
             data_source = "ValetTrack Facility Real-Time Sensor Telemetry"
             status_label = "OPERATIONAL_FORECAST"
             mode_tag = "Operational"

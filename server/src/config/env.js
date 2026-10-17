@@ -9,6 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProd = nodeEnv === 'production';
 const rawDbPassword = process.env.DB_PASSWORD;
+const rawTelemetryKey = process.env.TELEMETRY_API_KEY;
 
 // Security safeguard: Never silently fall back to a public or default password in production
 if (isProd) {
@@ -23,6 +24,23 @@ if (isProd) {
   if (!rawDbPassword || disallowedPasswords.includes(rawDbPassword.toLowerCase())) {
     throw new Error(
       'SECURITY ERROR: In production mode (NODE_ENV=production), DB_PASSWORD must be explicitly configured with a secure password and cannot use default or placeholder credentials.'
+    );
+  }
+
+  const disallowedTelemetryKeys = [
+    'valettrack_telemetry_dev_key',
+    'valettrack_live_sensor_key_2026',
+    'your_telemetry_api_key_here',
+    'your_secure_telemetry_key_here',
+    'telemetry_key',
+    'default',
+    'secret',
+    'admin',
+    'password'
+  ];
+  if (!rawTelemetryKey || disallowedTelemetryKeys.includes(rawTelemetryKey.toLowerCase()) || rawTelemetryKey.length < 16) {
+    throw new Error(
+      'SECURITY ERROR: In production mode (NODE_ENV=production), TELEMETRY_API_KEY must be explicitly configured with a secure key (minimum 16 characters) and cannot use default or placeholder credentials.'
     );
   }
 }
@@ -41,5 +59,5 @@ export const config = {
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   },
-  telemetryApiKey: process.env.TELEMETRY_API_KEY || 'valettrack_telemetry_dev_key'
+  telemetryApiKey: rawTelemetryKey || 'valettrack_telemetry_dev_key'
 };

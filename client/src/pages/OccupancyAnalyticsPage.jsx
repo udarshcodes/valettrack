@@ -39,22 +39,25 @@ export function OccupancyAnalyticsPage() {
   const [generatingForecasts, setGeneratingForecasts] = useState(false);
   const [forecastMode, setForecastMode] = useState('historical_replay');
   const [telemetryStatus, setTelemetryStatus] = useState(null);
+  const [recentTelemetry, setRecentTelemetry] = useState([]);
   const [forecastNotice, setForecastNotice] = useState(null);
 
   async function loadData() {
     try {
-      const [bSum, sSum, slotStats, mlStat, occPreds, telemStat] = await Promise.all([
+      const [bSum, sSum, slotStats, mlStat, occPreds, telemStat, recentTelem] = await Promise.all([
         api.getBirminghamSummary(),
         api.getSFparkSummary(),
         api.getSlotTypeOccupancy(),
         api.getPredictionStatus().catch(() => null),
         api.getOccupancyPredictions().catch(() => []),
-        api.getTelemetryStatus().catch(() => null)
+        api.getTelemetryStatus().catch(() => null),
+        api.getRecentTelemetry({ limit: 5 }).catch(() => [])
       ]);
 
       setMlStatus(mlStat);
       setOccPredictions(occPreds || []);
       setTelemetryStatus(telemStat);
+      setRecentTelemetry(recentTelem || []);
 
       if (bSum?.carParks) {
         setBhamCarParks(bSum.carParks);
@@ -304,22 +307,54 @@ export function OccupancyAnalyticsPage() {
             </div>
 
             {/* Operational Telemetry Banner */}
-            <div className="mb-6 p-3.5 rounded-xl bg-[#06090D] border border-[#16202C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono">
-              <div className="flex items-center gap-2.5">
-                <span className={`w-2 h-2 rounded-full ${telemetryStatus?.operational_forecasting_ready ? 'bg-[#10E599] animate-pulse' : 'bg-amber-400'}`}></span>
-                <span className="text-slate-300">
-                  Live Facility Telemetry (Last 48h): <strong className="text-white">{telemetryStatus?.readings_last_48h ?? 0} reading(s)</strong>
-                </span>
-                <span className="text-slate-500">|</span>
-                <span className="text-slate-400">
-                  Readiness: <strong className={telemetryStatus?.operational_forecasting_ready ? 'text-[#10E599]' : 'text-amber-400'}>
-                    {telemetryStatus?.operational_forecasting_ready ? 'READY FOR LIVE INFERENCE' : 'INSUFFICIENT TELEMETRY (< 12 readings)'}
-                  </strong>
+            <div className="mb-6 p-4 rounded-xl bg-[#06090D] border border-[#16202C] space-y-3 text-xs font-mono">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#16202C]/60">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${telemetryStatus?.operational_forecasting_ready ? 'bg-[#10E599] animate-pulse' : 'bg-amber-400'}`}></span>
+                    <span className="text-slate-300">
+                      Live Telemetry (Last 48h): <strong className="text-white">{telemetryStatus?.readings_last_48h ?? 0} reading(s)</strong>
+                    </span>
+                  </div>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-slate-300">
+                    Consecutive Stream: <strong className={telemetryStatus?.consecutive_hourly_readings >= 24 ? 'text-[#10E599]' : 'text-amber-400'}>
+                      {telemetryStatus?.consecutive_hourly_readings ?? 0}/24 hours
+                    </strong>
+                  </span>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-slate-400">
+                    Latest: <strong className="text-slate-200">
+                      {telemetryStatus?.latest_reading ? new Date(telemetryStatus.latest_reading).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'None'}
+                    </strong>
+                  </span>
+                  {telemetryStatus?.is_stale && (
+                    <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30 text-[10px]">
+                      STREAM STALE (&gt; 3h)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
+                    telemetryStatus?.operational_forecasting_ready
+                      ? 'bg-[#10E599]/10 text-[#10E599] border-[#10E599]/30'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                  }`}>
+                    {telemetryStatus?.operational_forecasting_ready ? '● READY FOR OPERATIONAL FORECAST' : '▲ INSUFFICIENT TELEMETRY'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-400">
+                <p className="text-slate-300">
+                  <span className="text-slate-500">Readiness: </span>
+                  {telemetryStatus?.operational_readiness_message || 'Checking telemetry stream...'}
+                </p>
+                <span className="text-slate-500 shrink-0">
+                  Mode: <strong className="text-slate-300">{forecastMode === 'operational' ? 'Operational Telemetry' : 'Historical Demonstration Replay'}</strong>
                 </span>
               </div>
-              <span className="text-[11px] text-slate-500">
-                Active Mode: <strong className="text-slate-300">{forecastMode === 'operational' ? 'Operational Telemetry' : 'Historical Demonstration Replay'}</strong>
-              </span>
             </div>
 
             {forecastNotice && (
@@ -431,7 +466,18 @@ export function OccupancyAnalyticsPage() {
           <div className="bg-[#0B1017] border border-[#16202C] rounded-2xl p-6 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
               <div>
-                <h2 className="text-base font-bold text-white">Persisted In-Database Forecast Records</h2>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="text-base font-bold text-white">Persisted In-Database Forecast Records</h2>
+                  {occPredictions.length > 0 && (
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      occPredictions[0]?.model_version?.includes('operational')
+                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                        : 'bg-[#10E599]/10 text-[#10E599] border-[#10E599]/30'
+                    }`}>
+                      {occPredictions[0]?.model_version?.includes('operational') ? 'LIVE OPERATIONAL TELEMETRY' : 'HISTORICAL DEMO REPLAY'}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400 font-mono">
                   Table: <code className="text-[#10E599]">occupancy_predictions</code> (Queried via API)
                 </p>
@@ -478,6 +524,70 @@ export function OccupancyAnalyticsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Live Telemetry Ingestion Stream & Producer Integration Guide */}
+          <div className="bg-[#0B1017] border border-[#16202C] rounded-2xl p-6 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-cyan-400" />
+                  <h2 className="text-base font-bold text-white">Recent Facility Sensor Ingestion Feed</h2>
+                </div>
+                <p className="text-xs text-slate-400 font-mono">
+                  Endpoint: <code className="text-cyan-400">POST /api/telemetry/readings</code> | Table: <code className="text-[#10E599]">occupancy_readings</code>
+                </p>
+              </div>
+              <span className="text-xs font-mono text-slate-400 bg-[#06090D] px-3 py-1.5 rounded-xl border border-[#16202C]">
+                {recentTelemetry.length} Recent Ingested Records
+              </span>
+            </div>
+
+            {recentTelemetry.length > 0 ? (
+              <div className="overflow-x-auto mb-6">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-[#06090D] text-slate-400 border-b border-[#16202C]">
+                    <tr>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Observation Time</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Slot Category</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Total Spaces</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Occupied</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Occupancy %</th>
+                      <th className="py-3 px-4 font-medium whitespace-nowrap">Telemetry Source</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#16202C] text-slate-300">
+                    {recentTelemetry.map((row) => (
+                      <tr key={row.reading_id} className="hover:bg-[#121A24]/40 transition-colors">
+                        <td className="py-3 px-4 text-[#10E599] font-bold whitespace-nowrap">
+                          {new Date(row.reading_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">{row.slot_type}</td>
+                        <td className="py-3 px-4 whitespace-nowrap text-white">{row.total_slots}</td>
+                        <td className="py-3 px-4 whitespace-nowrap text-slate-300">{row.occupied_slots}</td>
+                        <td className="py-3 px-4 font-bold text-cyan-400 whitespace-nowrap">{row.occupancy_pct}%</td>
+                        <td className="py-3 px-4 text-slate-500 whitespace-nowrap">{row.source}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-6 rounded-xl bg-[#06090D] border border-[#16202C] text-center mb-6">
+                <Radio className="w-8 h-8 text-slate-600 mx-auto mb-2 animate-pulse" />
+                <p className="text-xs font-mono text-slate-400">
+                  No facility telemetry readings currently ingested. Live sensors push observations to the API boundary below.
+                </p>
+              </div>
+            )}
+
+            <div className="p-4 rounded-xl bg-[#06090D] border border-[#16202C] text-xs font-mono space-y-2">
+              <strong className="text-white block font-sans">Connecting Physical Facility Sensors / Edge Gateways</strong>
+              <p className="text-slate-400 leading-relaxed font-sans">
+                To stream genuine observations from ultrasonic bay sensors, camera ANPR, or loop detectors, configure your IoT gateway to issue authenticated HTTP POST requests to <code className="text-[#10E599]">/api/telemetry/readings</code> with header <code className="text-cyan-400">x-telemetry-key: &lt;configured_secret&gt;</code>.
+                ValetTrack verifies timestamp boundaries, enforces strict capacity bounds, and requires 24 consecutive hourly observations before unlocking operational ML forecasts.
+              </p>
             </div>
           </div>
         </div>

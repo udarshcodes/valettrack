@@ -10,10 +10,8 @@
 --
 --   SFpark raw CSV (~1.38 GB)
 --        -> Python preprocessing
---        -> Occupancy ML model      -> predicted occupancy %  ->
-proc_log_occupancy_prediction() -> OccupancyPrediction
---        -> Dynamic pricing model   -> suggested rate         ->
-proc_log_pricing_prediction()    -> PricingPrediction
+--        -> Occupancy ML model      -> predicted occupancy %  -> proc_log_occupancy_prediction() -> OccupancyPrediction
+--        -> Dynamic pricing model   -> suggested rate         -> proc_log_pricing_prediction()    -> PricingPrediction
 --
 -- Oracle's only job is to store the two numbers each model produces
 -- (plus which SlotType and time window they apply to) through the two
@@ -23,31 +21,24 @@ proc_log_pricing_prediction()    -> PricingPrediction
 --
 
 ------------------------------------------------------------------------------
---
 -- SECTION 1: DROP EXISTING OBJECTS (safe re-run)
 ------------------------------------------------------------------------------
---
 BEGIN
     FOR t IN (SELECT table_name FROM user_tables WHERE table_name IN
         ('TICKET','PARKINGSLOT','SLOTTYPE','VEHICLE','VALETSTAFF','OWNER_',
          'PRICINGPREDICTION','OCCUPANCYPREDICTION')) LOOP
-        EXECUTE IMMEDIATE 'DROP TABLE ' || t.table_name || ' CASCADE
-CONSTRAINTS';
+        EXECUTE IMMEDIATE 'DROP TABLE ' || t.table_name || ' CASCADE CONSTRAINTS';
     END LOOP;
-    FOR s IN (SELECT sequence_name FROM user_sequences WHERE sequence_name
-LIKE 'SEQ_%') LOOP
+    FOR s IN (SELECT sequence_name FROM user_sequences WHERE sequence_name LIKE 'SEQ_%') LOOP
         EXECUTE IMMEDIATE 'DROP SEQUENCE ' || s.sequence_name;
     END LOOP;
 END;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 2: TABLE DEFINITIONS (DDL)
 -- Note: OWNER is a reserved word in Oracle, so the table is named OWNER_.
 ------------------------------------------------------------------------------
---
-
 
 CREATE TABLE OWNER_ (
     OwnerID     NUMBER PRIMARY KEY,
@@ -61,8 +52,7 @@ CREATE TABLE Vehicle (
     Type        VARCHAR2(30),
     Color       VARCHAR2(30),
     OwnerID     NUMBER NOT NULL,
-    CONSTRAINT fk_vehicle_owner FOREIGN KEY (OwnerID) REFERENCES
-OWNER_(OwnerID)
+    CONSTRAINT fk_vehicle_owner FOREIGN KEY (OwnerID) REFERENCES OWNER_(OwnerID)
 );
 
 CREATE TABLE ValetStaff (
@@ -76,19 +66,16 @@ CREATE TABLE SlotType (
     SlotTypeID  NUMBER PRIMARY KEY,
     TypeName    VARCHAR2(20) NOT NULL,
     BaseRate    NUMBER(8,2)  NOT NULL,
-    CONSTRAINT chk_slottype_name  CHECK (TypeName IN
-('Regular','Covered','EVCharging')),
-    CONSTRAINT chk_slottype_rate  CHECK (BaseRate >= 0)
+    CONSTRAINT chk_slottype_name CHECK (TypeName IN ('Regular','Covered','EVCharging')),
+    CONSTRAINT chk_slottype_rate CHECK (BaseRate >= 0)
 );
 
 CREATE TABLE ParkingSlot (
     SlotID      NUMBER PRIMARY KEY,
     SlotTypeID  NUMBER NOT NULL,
     Status      VARCHAR2(15) DEFAULT 'Available' NOT NULL,
-    CONSTRAINT fk_slot_type   FOREIGN KEY (SlotTypeID) REFERENCES
-SlotType(SlotTypeID),
-    CONSTRAINT chk_slot_status CHECK (Status IN
-('Available','Occupied','Reserved'))
+    CONSTRAINT fk_slot_type    FOREIGN KEY (SlotTypeID) REFERENCES SlotType(SlotTypeID),
+    CONSTRAINT chk_slot_status CHECK (Status IN ('Available','Occupied','Reserved'))
 );
 
 CREATE TABLE Ticket (
@@ -99,16 +86,11 @@ CREATE TABLE Ticket (
     EntryTime   TIMESTAMP NOT NULL,
     ExitTime    TIMESTAMP,
     AmountPaid  NUMBER(8,2) DEFAULT 0 NOT NULL,
-    CONSTRAINT fk_ticket_vehicle FOREIGN KEY (VehicleNo) REFERENCES
-Vehicle(VehicleNo),
-    CONSTRAINT fk_ticket_slot    FOREIGN KEY (SlotID)    REFERENCES
-ParkingSlot(SlotID),
-
-    CONSTRAINT fk_ticket_staff   FOREIGN KEY (StaffID)   REFERENCES
-ValetStaff(StaffID),
+    CONSTRAINT fk_ticket_vehicle FOREIGN KEY (VehicleNo) REFERENCES Vehicle(VehicleNo),
+    CONSTRAINT fk_ticket_slot    FOREIGN KEY (SlotID)    REFERENCES ParkingSlot(SlotID),
+    CONSTRAINT fk_ticket_staff   FOREIGN KEY (StaffID)   REFERENCES ValetStaff(StaffID),
     CONSTRAINT chk_ticket_amount CHECK (AmountPaid >= 0),
-    CONSTRAINT chk_ticket_time   CHECK (ExitTime IS NULL OR ExitTime >=
-EntryTime)
+    CONSTRAINT chk_ticket_time   CHECK (ExitTime IS NULL OR ExitTime >= EntryTime)
 );
 
 -- PredictionTime records when the ML model produced the prediction;
@@ -121,8 +103,7 @@ CREATE TABLE PricingPrediction (
     TimeSlot        VARCHAR2(30) NOT NULL,
     OccupancyPct    NUMBER(5,2),
     SuggestedRate   NUMBER(8,2),
-    CONSTRAINT fk_pricing_slottype FOREIGN KEY (SlotTypeID) REFERENCES
-SlotType(SlotTypeID),
+    CONSTRAINT fk_pricing_slottype FOREIGN KEY (SlotTypeID) REFERENCES SlotType(SlotTypeID),
     CONSTRAINT chk_pricing_occ     CHECK (OccupancyPct BETWEEN 0 AND 100),
     CONSTRAINT chk_pricing_rate    CHECK (SuggestedRate >= 0)
 );
@@ -131,20 +112,16 @@ SlotType(SlotTypeID),
 CREATE TABLE OccupancyPrediction (
     PredictionID        NUMBER PRIMARY KEY,
     SlotTypeID          NUMBER NOT NULL,
-    PredictionTime       TIMESTAMP NOT NULL,
+    PredictionTime      TIMESTAMP NOT NULL,
     TimeSlot            VARCHAR2(30) NOT NULL,
     PredictedOccupancy  NUMBER(5,2),
-    CONSTRAINT fk_occupancy_slottype FOREIGN KEY (SlotTypeID) REFERENCES
-SlotType(SlotTypeID),
-    CONSTRAINT chk_occupancy_pct     CHECK (PredictedOccupancy BETWEEN 0 AND
-100)
+    CONSTRAINT fk_occupancy_slottype FOREIGN KEY (SlotTypeID) REFERENCES SlotType(SlotTypeID),
+    CONSTRAINT chk_occupancy_pct     CHECK (PredictedOccupancy BETWEEN 0 AND 100)
 );
 
 ------------------------------------------------------------------------------
---
 -- SECTION 3: SEQUENCES
 ------------------------------------------------------------------------------
---
 CREATE SEQUENCE seq_owner       START WITH 1 INCREMENT BY 1;
 CREATE SEQUENCE seq_staff       START WITH 1 INCREMENT BY 1;
 CREATE SEQUENCE seq_slottype    START WITH 1 INCREMENT BY 1;
@@ -154,28 +131,20 @@ CREATE SEQUENCE seq_pricing     START WITH 1 INCREMENT BY 1;
 CREATE SEQUENCE seq_occupancy   START WITH 1 INCREMENT BY 1;
 
 ------------------------------------------------------------------------------
---
 -- SECTION 4: SAMPLE DATA
 -- No direct inserts into the prediction tables: those are only ever
 -- populated through the logging procedures in Section 6.
-
 ------------------------------------------------------------------------------
---
-INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Arjun Mehta',   '9876543210',
-'arjun.mehta@mail.com');
-INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Priya Nair',    '9876500011',
-'priya.nair@mail.com');
-INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Rohan Das',     '9876500022',
-'rohan.das@mail.com');
+INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Arjun Mehta', '9876543210', 'arjun.mehta@mail.com');
+INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Priya Nair',  '9876500011', 'priya.nair@mail.com');
+INSERT INTO OWNER_ VALUES (seq_owner.NEXTVAL, 'Rohan Das',   '9876500022', 'rohan.das@mail.com');
 
-INSERT INTO Vehicle VALUES ('TN01AB1234', 'Sedan', 'White', 1);
-INSERT INTO Vehicle VALUES ('TN02CD5678', 'SUV',   'Black', 2);
-INSERT INTO Vehicle VALUES ('TN03EF9012', 'Hatchback', 'Red', 3);
+INSERT INTO Vehicle VALUES ('TN01AB1234', 'Sedan',     'White', 1);
+INSERT INTO Vehicle VALUES ('TN02CD5678', 'SUV',       'Black', 2);
+INSERT INTO Vehicle VALUES ('TN03EF9012', 'Hatchback', 'Red',   3);
 
-INSERT INTO ValetStaff VALUES (seq_staff.NEXTVAL, 'Karthik S', '9000011111',
-'Morning');
-INSERT INTO ValetStaff VALUES (seq_staff.NEXTVAL, 'Divya R',   '9000022222',
-'Evening');
+INSERT INTO ValetStaff VALUES (seq_staff.NEXTVAL, 'Karthik S', '9000011111', 'Morning');
+INSERT INTO ValetStaff VALUES (seq_staff.NEXTVAL, 'Divya R',   '9000022222', 'Evening');
 
 INSERT INTO SlotType VALUES (seq_slottype.NEXTVAL, 'Regular',    50);
 INSERT INTO SlotType VALUES (seq_slottype.NEXTVAL, 'Covered',    80);
@@ -189,10 +158,8 @@ INSERT INTO ParkingSlot VALUES (seq_slot.NEXTVAL, 3, 'Available');
 COMMIT;
 
 ------------------------------------------------------------------------------
---
 -- SECTION 5: FUNCTIONS
 ------------------------------------------------------------------------------
---
 
 -- Computes the bill for a stay: whole hours (rounded up) x BaseRate of the
 -- slot's SlotType. A minimum charge of one hour applies.
@@ -213,7 +180,6 @@ BEGIN
     FROM ParkingSlot ps JOIN SlotType st ON ps.SlotTypeID = st.SlotTypeID
     WHERE ps.SlotID = p_slotid;
 
-
     v_hours := CEIL( (CAST(p_exit AS DATE) - CAST(p_entry AS DATE)) * 24 );
     IF v_hours < 1 THEN
         v_hours := 1;
@@ -224,10 +190,8 @@ END fn_calculate_amount;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 6: STANDALONE PROCEDURES
 ------------------------------------------------------------------------------
---
 
 -- 6.1 Opens a new ticket for a vehicle at a slot chosen by an external AI
 -- allocation model (p_slotid is passed in, not computed here).
@@ -239,10 +203,8 @@ CREATE OR REPLACE PROCEDURE proc_open_ticket(
 )
 IS
 BEGIN
-    INSERT INTO Ticket (TicketID, VehicleNo, SlotID, StaffID, EntryTime,
-AmountPaid)
-    VALUES (seq_ticket.NEXTVAL, p_vehicleno, p_slotid, p_staffid,
-SYSTIMESTAMP, 0)
+    INSERT INTO Ticket (TicketID, VehicleNo, SlotID, StaffID, EntryTime, AmountPaid)
+    VALUES (seq_ticket.NEXTVAL, p_vehicleno, p_slotid, p_staffid, SYSTIMESTAMP, 0)
     RETURNING TicketID INTO p_ticketid;
     COMMIT;
 END proc_open_ticket;
@@ -265,10 +227,8 @@ BEGIN
     FROM Ticket WHERE TicketID = p_ticketid;
 
     IF v_exit IS NOT NULL THEN
-        RAISE_APPLICATION_ERROR(-20002, 'Ticket ' || p_ticketid || ' is
-already closed.');
+        RAISE_APPLICATION_ERROR(-20002, 'Ticket ' || p_ticketid || ' is already closed.');
     END IF;
-
 
     v_amount := fn_calculate_amount(v_slotid, v_entry, SYSTIMESTAMP);
 
@@ -298,10 +258,8 @@ CREATE OR REPLACE PROCEDURE proc_log_occupancy_prediction(
 )
 IS
 BEGIN
-    INSERT INTO OccupancyPrediction (PredictionID, SlotTypeID, PredictionTime,
-TimeSlot, PredictedOccupancy)
-    VALUES (seq_occupancy.NEXTVAL, p_slottypeid, p_predictiontime, p_timeslot,
-p_predicted);
+    INSERT INTO OccupancyPrediction (PredictionID, SlotTypeID, PredictionTime, TimeSlot, PredictedOccupancy)
+    VALUES (seq_occupancy.NEXTVAL, p_slottypeid, p_predictiontime, p_timeslot, p_predicted);
     COMMIT;
 END proc_log_occupancy_prediction;
 /
@@ -318,20 +276,15 @@ CREATE OR REPLACE PROCEDURE proc_log_pricing_prediction(
 )
 IS
 BEGIN
-    INSERT INTO PricingPrediction (PricingID, SlotTypeID, PredictionTime,
-TimeSlot, OccupancyPct, SuggestedRate)
-    VALUES (seq_pricing.NEXTVAL, p_slottypeid, p_predictiontime, p_timeslot,
-p_occupancypct, p_suggested);
+    INSERT INTO PricingPrediction (PricingID, SlotTypeID, PredictionTime, TimeSlot, OccupancyPct, SuggestedRate)
+    VALUES (seq_pricing.NEXTVAL, p_slottypeid, p_predictiontime, p_timeslot, p_occupancypct, p_suggested);
     COMMIT;
-
 END proc_log_pricing_prediction;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 7: TRIGGERS
 ------------------------------------------------------------------------------
---
 
 -- 7.1 Business rule: a ticket may only be opened against a slot that is
 -- currently Available. This enforces the AI allocation contract -- the AI
@@ -345,8 +298,7 @@ DECLARE
 BEGIN
     SELECT Status INTO v_status FROM ParkingSlot WHERE SlotID = :NEW.SlotID;
     IF v_status <> 'Available' THEN
-        RAISE_APPLICATION_ERROR(-20001, 'Selected slot is not available for
-allocation.');
+        RAISE_APPLICATION_ERROR(-20001, 'Selected slot is not available for allocation.');
     END IF;
     IF :NEW.TicketID IS NULL THEN
         :NEW.TicketID := seq_ticket.NEXTVAL;
@@ -375,14 +327,11 @@ END;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 8: PACKAGE SPECIFICATION
 -- The package wraps the ticket lifecycle only. The prediction logging
-
 -- procedures stay standalone, since Python calls them directly and does
 -- not need the ticket-focused package interface.
 ------------------------------------------------------------------------------
---
 CREATE OR REPLACE PACKAGE pkg_valet_track AS
     PROCEDURE open_ticket(
         p_vehicleno IN  VARCHAR2,
@@ -396,10 +345,8 @@ END pkg_valet_track;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 9: PACKAGE BODY
 ------------------------------------------------------------------------------
---
 CREATE OR REPLACE PACKAGE BODY pkg_valet_track AS
 
     PROCEDURE open_ticket(
@@ -429,11 +376,9 @@ END pkg_valet_track;
 /
 
 ------------------------------------------------------------------------------
---
 -- SECTION 10: DEMONSTRATION / TEST BLOCK
 --
 -- The two prediction values below (v_demo_occupancy, v_demo_rate) are
-
 -- PLACEHOLDERS standing in for what the external ML models would return.
 -- In the real pipeline, Python loads the SFpark dataset, preprocesses it,
 -- runs the occupancy and dynamic pricing models, and passes their outputs
@@ -442,17 +387,14 @@ END pkg_valet_track;
 -- this block only proves the logging procedures and the ticket lifecycle
 -- work end to end.
 ------------------------------------------------------------------------------
---
 SET SERVEROUTPUT ON;
 
 DECLARE
     v_ticketid       NUMBER;
     v_revenue        NUMBER;
     v_demo_time      TIMESTAMP := SYSTIMESTAMP;
-    v_demo_occupancy NUMBER := 72.5; -- placeholder for external ML model
-output
-    v_demo_rate      NUMBER := 65;   -- placeholder for external ML model
-output
+    v_demo_occupancy NUMBER := 72.5; -- placeholder for external ML model output
+    v_demo_rate      NUMBER := 65;   -- placeholder for external ML model output
 BEGIN
     -- Open a ticket for TN01AB1234 at slot 1, handled by staff 1.
     -- SlotID here stands in for the value an external allocation model
@@ -463,10 +405,8 @@ BEGIN
     -- Demonstration only: v_demo_occupancy / v_demo_rate stand in for
     -- values that would arrive from Python after it has run the SFpark
     -- based ML models. The procedures below are exactly what Python calls.
-    proc_log_occupancy_prediction(1, v_demo_time, '18:00-19:00',
-v_demo_occupancy);
-    proc_log_pricing_prediction(1, v_demo_time, '18:00-19:00',
-v_demo_occupancy, v_demo_rate);
+    proc_log_occupancy_prediction(1, v_demo_time, '18:00-19:00', v_demo_occupancy);
+    proc_log_pricing_prediction(1, v_demo_time, '18:00-19:00', v_demo_occupancy, v_demo_rate);
 
     -- Close the ticket and bill it (billing still uses SlotType.BaseRate,
     -- not the demo suggested rate above).
@@ -482,18 +422,14 @@ v_demo_occupancy, v_demo_rate);
         pkg_valet_track.close_ticket(v_ticketid);
     EXCEPTION
         WHEN OTHERS THEN
-            DBMS_OUTPUT.PUT_LINE('Expected error on double-close: ' ||
-SQLERRM);
+            DBMS_OUTPUT.PUT_LINE('Expected error on double-close: ' || SQLERRM);
     END;
 END;
 /
 
-
 ------------------------------------------------------------------------------
---
 -- SECTION 11: VERIFICATION QUERIES
 ------------------------------------------------------------------------------
---
 SELECT * FROM Ticket;
 SELECT * FROM ParkingSlot;
 SELECT * FROM OccupancyPrediction;

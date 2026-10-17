@@ -126,6 +126,11 @@ export async function deleteVehicle(req, res, next) {
   try {
     const { vehicle_no } = req.params;
 
+    const vehicleCheck = await query(`SELECT vehicle_no FROM vehicles WHERE vehicle_no = $1`, [vehicle_no]);
+    if (vehicleCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'NotFound', message: `Vehicle ${vehicle_no} not found` });
+    }
+
     const checkTickets = await query(`
       SELECT COUNT(*) as count FROM tickets WHERE vehicle_no = $1
     `, [vehicle_no]);
@@ -142,10 +147,6 @@ export async function deleteVehicle(req, res, next) {
       WHERE vehicle_no = $1
       RETURNING vehicle_no
     `, [vehicle_no]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'NotFound', message: `Vehicle ${vehicle_no} not found` });
-    }
 
     res.json({ message: 'Vehicle deleted successfully', deleted: result.rows[0] });
   } catch (err) {

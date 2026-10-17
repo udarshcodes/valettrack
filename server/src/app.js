@@ -6,8 +6,22 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 export const app = express();
 
+const allowedOrigins = config.clientOrigin
+  ? config.clientOrigin.split(',').map(s => s.trim())
+  : ['http://localhost:5174'];
+
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow non-browser requests with no origin (e.g. curl, sensor gateways)
+    if (!origin) return callback(null, true);
+    if (config.nodeEnv !== 'production') {
+      return callback(null, true);
+    }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS policy violation: Origin '${origin}' is not allowed.`));
+  },
   credentials: true
 }));
 app.use(express.json());

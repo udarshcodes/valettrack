@@ -51,8 +51,11 @@ export function packageRelease() {
   const requiredFiles = [
     'package.json',
     'requirements.txt',
+    'README.md',
+    'compose.yaml',
     'sql/schema.sql',
     'sql/seed.sql',
+    'sql/oracle_valettrack.sql',
     'tests/backend.test.js',
     'data/models/model_metadata.json'
   ];
