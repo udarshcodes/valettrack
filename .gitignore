@@ -24,13 +24,13 @@ htmlcov/
 *.joblib
 *.pkl
 
-# Large datasets and archives
+# Large datasets and archives (SFpark is 1.38 GB)
 *.zip
 *.tar.gz
-*.csv
-!data/birmingham/sample*.csv
-data/birmingham/dataset.csv
 SFpark_ParkingSensorData_HourlyOccupancy_20112013.csv
+*.csv
+!data/birmingham/dataset.csv
+!data/birmingham/sample*.csv
 
 # Temporary files and editor metadata
 scratch/
