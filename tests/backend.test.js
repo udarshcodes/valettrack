@@ -36,7 +36,7 @@ before(async () => {
   const bhamCheck = await query('SELECT count(*) FROM birmingham_readings LIMIT 1;');
   if (parseInt(bhamCheck.rows[0].count, 10) === 0) {
     const importScript = path.resolve('scripts/import_birmingham.js');
-    execSync(`node "${importScript}"`, { stdio: 'inherit' });
+    execSync(`node "${importScript}"`, { stdio: 'inherit', env: process.env });
   }
 
   // 3. Ensure baseline SFpark demonstration dataset and manifest exist if empty
@@ -64,8 +64,12 @@ before(async () => {
         1800,
         50.00
       FROM generate_series(1, 55000) AS i;
-      CALL refresh_continuous_aggregate('sfpark_hourly_summary', NULL, NULL);
     `);
+    try {
+      await query(`CALL refresh_continuous_aggregate('sfpark_hourly_summary', NULL, NULL);`);
+    } catch (e) {
+      console.warn('Note on sfpark_hourly_summary refresh:', e.message);
+    }
   }
 
   const manifestCheck = await query(`
