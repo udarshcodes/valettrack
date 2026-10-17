@@ -20,6 +20,7 @@
     "test": "node --test tests/backend.test.js",
     "build": "npm run build --prefix client",
     "build:client": "npm run build --prefix client",
+    "package": "node scripts/package_release.js",
     "seed": "node scripts/seed.js"
   },
   "dependencies": {
