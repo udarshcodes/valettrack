@@ -99,36 +99,40 @@ Executed via `node --test tests/backend.test.js`:
 > valettrack@1.0.0 test
 > node --test tests/backend.test.js
 
-Test server running on http://localhost:6638
-✔ 1. Health Check Endpoint & TimescaleDB Connectivity (387.3366ms)
-✔ 2. Dashboard Summary API Returns Database-Backed Statistics (23.2745ms)
-✔ 3. Owner CRUD & Input Validation (68.5665ms)
-✔ 4. Vehicle Registration & Owner Reference Validation (6.0642ms)
-✔ 5. Ticket Lifecycle: Open Ticket, Availability Check, Slot Locking & Billing (70.3203ms)
-✔ 6. Concurrent Slot Allocation Protection (49.7833ms)
-✔ 7. Analytics: Real TimescaleDB Continuous Aggregates & Rate Analysis (6582.3835ms)
-✔ 8. Real world Birmingham and SFpark Hypertable Queries (256.7097ms)
-✔ 9. Dataset Import Manifest Audit Log Verification (9.2353ms)
-✔ 10. SFpark 4-Band Dynamic Pricing Policy Boundary Tests (28.6202ms)
-✔ 11. Machine Learning Forecaster & Prediction Endpoints (28.1577ms)
-✔ 12. Automated Slot Allocation Recommendation Service (15.4717ms)
-✔ 13. Identifier Sequence Synchronization & Additional Slot Creation (16.0851ms)
-✔ 14. Daily and Hourly Occupancy Calculations Accuracy & Deterministic Interval Fixtures (26.4433ms)
-✔ 15. Multi-Day Ticket Spanning Midnight Interval Splitting & Capacity Denominator (22.5965ms)
-✔ 16. Missing Hourly Observations & Disjoint Interval Handling (0.7796ms)
-✔ 17. Concurrent Duplicate Vehicle Requests Across Different Parking Spaces (54.0646ms)
-✔ 18. Facility Dynamic Pricing Policy Verification (INR, ₹ & 4-Tier Elasticity) (8.0038ms)
-✔ 19. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Status (215.1037ms)
-✔ 20. Machine Learning Model Artifacts, Scikit-Learn Version Alignment & Inference Pipeline (5341.9683ms)
+Test server running on http://localhost:10710
+✔ 1. Fresh Database Initialization & TimescaleDB Connectivity (235.1511ms)
+✔ 2. Dashboard Summary API Returns Database-Backed Statistics (13.3377ms)
+✔ 3. Owner CRUD & Input Validation (31.4283ms)
+✔ 4. Vehicle Registration & Owner Reference Validation (3.3276ms)
+✔ 5. Ticket Lifecycle: Open Ticket, Availability Check, Slot Locking & Billing (29.9133ms)
+✔ 6. Concurrent Slot Allocation Protection (Different Vehicles, Same Slot) (28.6676ms)
+✔ 7. Concurrent Duplicate Vehicle Requests Across Different Parking Spaces (16.3505ms)
+✔ 8. Ticket Reopening & Duplicate Ticket Closure Rejection (16.1785ms)
+✔ 9. Exact Hourly Occupancy: Time-Weighted Average, True Peak, and True Minimum Occupancy (0.4751ms)
+✔ 10. Exact Daily Occupancy Values Across Calendar Range & Zero-Ticket Date Preservation (6.8446ms)
+✔ 11. Multi-Day Ticket Spanning Midnight Interval Splitting & Capacity Denominator (7.8616ms)
+✔ 12. Missing Hourly Observations & Disjoint Interval Handling (0.2169ms)
+✔ 13. Correct Recent Time Window Selection & Chronological Order (4.4553ms)
+✔ 14. SFpark 4-Band Dynamic Pricing Policy Boundary Tests (6.8359ms)
+✔ 15. Facility Dynamic Pricing Policy Verification (INR, ₹ & 4-Tier Elasticity) (3.6951ms)
+✔ 16. Identifier Sequence Synchronization & Additional Slot Creation (5.5804ms)
+✔ 17. Safe SQL and JavaScript Seeding Preservation of Active Ticket Slot Status (125.0078ms)
+✔ 18. Time Series Lag Feature Exact Timestamp Alignment Verification (0.4259ms)
+✔ 19. Prevention of Future Information Leakage During Model Validation & Holdout Integrity (0.1944ms)
+✔ 20. Machine Learning Model Artifacts, Scikit-Learn 1.9.0 Alignment & Recursive Inference (2997.7318ms)
+✔ 21. Operational Forecasting vs Historical Demonstration Mode Handling (1504.575ms)
+✔ 22. Real World Birmingham & SFpark Hypertable Continuous Aggregates (107.3704ms)
+✔ 23. Dataset Import Manifest Audit Log & Production Overwrite Safeguards (2.9577ms)
+✔ 24. Secret Protection, Distribution Package Hygiene & Release Packaging (124.0452ms)
 
-ℹ tests 20
+ℹ tests 24
 ℹ suites 0
-ℹ pass 20
+ℹ pass 24
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 13616.5671
+ℹ duration_ms 5489.1143
 ```
 
 ---

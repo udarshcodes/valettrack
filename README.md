@@ -75,8 +75,8 @@ flowchart TD
 * **Safe Seeding vs Dev Reset**: `npm run db:seed` performs safe, non-destructive upserts. Intentional cleanup is isolated to `npm run db:reset`, protected by strict safeguards that refuse to execute in production (`NODE_ENV=production`).
 
 ### B. Machine Learning Forecaster and Automated Slot Allocation
-* **Production Time Series Forecaster**: Real `HistGradientBoostingRegressor` trained on 35,717 hourly municipal observations with complete continuous hourly indexing and explicit missing hour interpolation. Features: `hour`, `day_of_week`, `is_weekend`, `lag_1h`, `lag_24h`.
-  * **Validation MAE:** **1.46%** | **RMSE:** **2.30%** | **$R^2$:** **0.9780** (79.4% error reduction over naive 24h persistence baseline).
+* **Production Time Series Forecaster**: Real `HistGradientBoostingRegressor` trained on 35,717 hourly municipal observations with complete continuous hourly indexing and strict leakage prevention (chronological split before preprocessing). Features: `hour`, `day_of_week`, `is_weekend`, `lag_1h`, `lag_24h`.
+  * **Validation MAE:** **4.85%** | **RMSE:** **9.41%** | **$R^2$:** **0.6896** (evaluated strictly on 148 genuine observed holdout targets, achieving a 28.6% error reduction over the naive 24h persistence baseline of 6.79% MAE).
 * **Automated Multi-Criteria Slot Allocation**: Evaluates incoming vehicles by powertrain and dimensions:
   * **Electric Vehicles (EV):** Prioritized for Level 2 `EVCharging` spaces.
   * **SUVs & Large Vehicles:** Prioritized for wide-clearance `Covered` spaces.
@@ -104,7 +104,7 @@ flowchart TD
 | **Machine Learning** | Python 3, Scikit-Learn | Scikit-Learn 1.9.0, Joblib, NumPy, Pandas (`HistGradientBoostingRegressor`) |
 | **Frontend** | React 19, Vite 8 | Single page application with React Router 7, Tailwind CSS 3.4 |
 | **Supported Node.js** | Node.js 20.19+, Node.js 22+ LTS | Required by Vite 8 & React 19 (Tested and validated on Node.js 24) |
-| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**20 automated integration test suites**) |
+| **Testing** | Node.js Test Runner | `node:test` and `node:assert` (**24 automated integration test suites**) |
 
 ---
 
@@ -216,30 +216,34 @@ npm run client
 
 ---
 
-## 5. Automated Test Suite (20 Passing Test Suites)
+## 5. Automated Test Suite (24 Passing Test Suites)
 
 The integration test suite (`tests/backend.test.js`) executes against the live database and validates all system invariants:
 
-1. **Health Check & TimescaleDB Connectivity**: Confirms PostgreSQL 16 + TimescaleDB 2.30 and verifies registered hypertables.
+1. **Fresh Database Initialization & TimescaleDB Connectivity**: Confirms PostgreSQL 16 + TimescaleDB 2.30 and verifies registered hypertables.
 2. **Dashboard Summary API**: Validates live metrics, slot counts, and capacity calculations.
 3. **Owner CRUD & Input Validation**: Tests creation, validation errors, update, and clean deletion.
 4. **Vehicle Registration**: Enforces valid foreign key references to owners.
 5. **Ticket Lifecycle & Availability Check**: Validates slot locking, duplicate booking rejection (HTTP 409), duplicate active vehicle ticket rejection (HTTP 409), duration billing calculation, 1-hour minimum charge, and double close rejection.
-6. **Concurrent Slot Allocation Protection**: Launches simultaneous concurrent allocation requests on the exact same slot; asserts that exactly one succeeds (201) and the competing request is rejected (409 Conflict).
-7. **Continuous Aggregates & Rate Analysis**: Validates real `time_bucket` rollups, rate tier distributions, and SFpark rule-based pricing recommendations.
-8. **Real World Hypertable Queries**: Executes analytical queries on both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
-9. **Import Manifest Verification**: Confirms audit log entries with verified SHA256 checksums and exact row counts.
-10. **SFpark 4-Band Dynamic Pricing Boundary Tests**: Validates exact pricing adjustments across 0%, 29.99%, 30%, 59.99%, 60%, 80%, 80.01%, 100%, and the $0.25 minimum rate floor.
-11. **Machine Learning Forecaster & Prediction Endpoints**: Validates model status (`HistGradientBoostingRegressor`, MAE $\le 3.5\%$) and in-database prediction records.
-12. **Automated Slot Allocation Recommendation Service**: Validates EV-to-EVCharging and SUV-to-Covered matching with explainable rationales.
-13. **Identifier Sequence Synchronization**: Validates that inserting records after explicit seed IDs does not cause primary key conflicts.
-14. **Daily and Hourly Occupancy Calculations Accuracy & Deterministic Fixtures**: Validates mathematically derived daily and hourly occupancy metrics and deterministic interval fixtures with known expected numerical outputs.
-15. **Multi-Day Ticket Spanning Midnight Interval Splitting**: Validates exact stay duration splitting across midnight into distinct calendar days using the complete facility capacity denominator (`total_slots * 24.0`).
-16. **Missing Hourly Observations & Disjoint Interval Dynamics**: Validates empty-hour handling, true minimum occupancy reaching 0.0% during unoccupied gaps, and true peak occupancy.
-17. **Concurrent Duplicate Vehicle Requests Across Different Slots**: Asserts that two concurrent booking requests for the same vehicle targeting different parking slots reject the duplicate with HTTP 409 Conflict (`VehicleAlreadyParked`).
-18. **Facility Dynamic Pricing Policy Verification**: Validates 4-tier elasticity curve in ₹ INR (+20% surge, 0% standard, -10% incentive, -20% off-peak).
-19. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with an active ticket preserves the `Occupied` status and never resets it to `Available`.
+6. **Concurrent Slot Allocation Protection (Different Vehicles, Same Slot)**: Launches simultaneous concurrent allocation requests on the exact same slot; asserts that exactly one succeeds (201) and the competing request is rejected (409 Conflict).
+7. **Concurrent Duplicate Vehicle Requests (Same Vehicle, Different Slots)**: Asserts that two concurrent booking requests for the same vehicle targeting different parking slots reject the duplicate with HTTP 409 Conflict (`VehicleAlreadyParked`).
+8. **Ticket Reopening & Duplicate Ticket Closure Rejection**: Asserts double-close attempts return HTTP 400 `AlreadyClosed`.
+9. **Exact Hourly Occupancy Math & Deterministic Fixtures**: Validates mathematically derived hourly metrics on known fixtures (e.g. 4 slots with 15m + 30m non-overlapping tickets yields exact 18.75% avg, 25.0% peak, 0.0% min).
+10. **Exact Daily Occupancy Values & Zero-Ticket Date Preservation**: Validates continuous multi-day calendar range generation where empty dates return 0.0% occupancy without being omitted.
+11. **Multi-Day Ticket Spanning Midnight Interval Splitting**: Validates exact stay duration splitting across midnight into distinct calendar days using the complete facility capacity denominator (`total_slots * 24.0`).
+12. **Missing Hourly Observations & Disjoint Interval Handling**: Validates empty-hour handling, true minimum occupancy reaching 0.0% during unoccupied gaps, and true peak occupancy.
+13. **Correct Recent Time Window Selection & Chronological Order**: Validates ascending chronological ordering of analytical series.
+14. **SFpark 4-Band Dynamic Pricing Boundary Tests**: Validates exact pricing adjustments across 0%, 29.99%, 30%, 59.99%, 60%, 80%, 80.01%, 100%, and the $0.25 minimum rate floor.
+15. **Facility Dynamic Pricing Policy Verification**: Validates 4-tier elasticity curve in ₹ INR (+20% surge, 0% standard, -10% incentive, -20% off-peak) and rejects invalid inputs.
+16. **Identifier Sequence Synchronization & Additional Slot Creation**: Validates that inserting records after explicit seed IDs does not cause primary key conflicts.
+17. **Safe SQL & JavaScript Seeding Preservation**: Validates that executing both `scripts/seed.js` and `sql/seed.sql` against a database with an active ticket preserves the `Occupied` status and never resets it to `Available`.
+18. **Time Series Lag Feature Exact Timestamp Alignment**: Verifies that `lag_1h` is strictly $t - 1\text{h}$ and `lag_24h` is strictly $t - 24\text{h}$.
+19. **Prevention of Future Information Leakage During Model Validation**: Verifies chronological train/test split occurred before preprocessing, and holdout evaluation was conducted exclusively on 148 genuine observed targets.
 20. **Machine Learning Model Artifacts, Scikit-Learn Alignment & Live Inference**: Validates model persistence, Scikit-Learn 1.9.0 runtime alignment, multi-horizon forecast generation (+1h, +2h, +4h, etc.), and in-database storage with transaction rollback safety.
+21. **Operational Forecasting vs Historical Demonstration Mode Handling**: Asserts that operational forecasting without live telemetry returns `INSUFFICIENT_CURRENT_DATA` instead of fabricating observations.
+22. **Real World Hypertable Continuous Aggregates**: Executes analytical queries on both Birmingham (35.7K) and SFpark (7.9M) continuous aggregates.
+23. **Dataset Import Manifest Audit Log & Overwrite Safeguards**: Confirms audit log entries with verified SHA256 checksums, exact row counts, and production overwrite safeguards.
+24. **Secret Protection, Distribution Package Hygiene & Release Packaging**: Verifies `.env` is excluded by git, and release packaging script creates a clean distribution zip excluding all secrets and temporary assets.
 
 Run the test suite at any time:
 ```powershell
